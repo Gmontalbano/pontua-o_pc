@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 
+
 def registrar_chamada(c, conn):
     st.subheader("Registrar Chamada")
     reunioes = pd.read_sql("SELECT * FROM reunioes", conn)
@@ -10,43 +11,65 @@ def registrar_chamada(c, conn):
     unidade = st.selectbox("Unidade", unidades['Nome'] if not unidades.empty else [])
 
     if reuniao and unidade:
+        reuniao_id = int(reunioes[reunioes['Nome'] == reuniao]['ID'].values[0])
         membros_unidade = pd.read_sql(f"SELECT Nome FROM membros WHERE Unidade = '{unidade}'", conn)
-        registros = []
+        chamadas_existentes = pd.read_sql(
+            f"SELECT * FROM chamadas WHERE Reuniao_ID = {reuniao_id} AND Unidade = '{unidade}'", conn
+        )
 
+        registros = []
         for _, row in membros_unidade.iterrows():
-            st.subheader(row['Nome'])
+            nome = row['Nome']
+            chamada_existente = chamadas_existentes[chamadas_existentes['Membro'] == nome]
+
+            presenca = int(chamada_existente['Presenca'].values[0]) if not chamada_existente.empty else 0
+            pontualidade = int(chamada_existente['Pontualidade'].values[0]) if not chamada_existente.empty else 0
+            uniforme = int(chamada_existente['Uniforme'].values[0]) if not chamada_existente.empty else 0
+            modestia = int(chamada_existente['Modestia'].values[0]) if not chamada_existente.empty else 0
+
+            st.subheader(nome)
             col1, col2, col3, col4 = st.columns(4)
 
-            on = col1.toggle("Presença", key=f"presenca_{row['Nome']}")
-            if on:
+            presenca_toggle = col1.toggle("Presença", value=(presenca == 10), key=f"presenca_{nome}")
+            if presenca_toggle:
                 presenca = 10
-                pontualidade = col2.number_input('Pontualidade', min_value=0, max_value=10, step=5,\
-                                               key=f"pontualidade_{row['Nome']}")
-                uniforme = col3.number_input('Uniforme', min_value=0, max_value=10, step=5,
-                                               key=f"uniforme_{row['Nome']}")
-                modestia = col4.number_input('Modéstia', min_value=0, max_value=10, step=5,
-                                               key=f"modestia_{row['Nome']}")
+                pontualidade = col2.number_input('Pontualidade', min_value=0, max_value=10, step=5, value=pontualidade, key=f"pontualidade_{nome}")
+                uniforme = col3.number_input('Uniforme', min_value=0, max_value=10, step=5, value=uniforme, key=f"uniforme_{nome}")
+                modestia = col4.number_input('Modéstia', min_value=0, max_value=10, step=5, value=modestia, key=f"modestia_{nome}")
             else:
                 presenca = 0
                 pontualidade = 0
                 uniforme = 0
                 modestia = 0
 
-            registros.append((int(reunioes[reunioes['Nome'] == reuniao]['ID'].values[0]),
-                              unidade,
-                              row['Nome'],
-                              presenca,
-                              pontualidade,
-                              uniforme,
-                              modestia))
+            registros.append((reuniao_id, unidade, nome, presenca, pontualidade, uniforme, modestia))
 
         if st.button("Salvar Chamada"):
-            print(registros)
-            c.executemany(
-                "INSERT INTO chamadas (Reuniao_ID, Unidade, Membro, Presenca, Pontualidade, Uniforme, Modestia) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                registros)
+            for r in registros:
+                # Primeiro, verifica se o registro já existe
+                c.execute(
+                    "SELECT COUNT(*) FROM chamadas WHERE Reuniao_ID = ? AND Unidade = ? AND Membro = ?",
+                    (r[0], r[1], r[2])
+                )
+                existe = c.fetchone()[0]
+
+                if existe:
+                    # Atualiza se já existir
+                    c.execute(
+                        "UPDATE chamadas SET Presenca=?, Pontualidade=?, Uniforme=?, Modestia=? "
+                        "WHERE Reuniao_ID=? AND Unidade=? AND Membro=?",
+                        (r[3], r[4], r[5], r[6], r[0], r[1], r[2])
+                    )
+                else:
+                    # Insere se não existir
+                    c.execute(
+                        "INSERT INTO chamadas (Reuniao_ID, Unidade, Membro, Presenca, Pontualidade, Uniforme, Modestia) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?)", r
+                    )
+
             conn.commit()
-            st.success("Chamada registrada com sucesso!")
+            st.success("Chamada registrada/atualizada com sucesso!")
+
 
 
 def visualizar_chamada(conn):
