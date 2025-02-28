@@ -1,110 +1,85 @@
 import streamlit as st
-import pandas as pd
 import sqlite3
-from datetime import datetime
+from PIL import Image
+from utils.hashes import hash_senha
 
-# Conectar ao banco de dados SQLite
-conn = sqlite3.connect('registro_chamada.db')
-c = conn.cursor()
+from pgs.cadastros import cadastro_unidade, cadastro_reuniao, cadastro_membro, cadastro_usuarios, gerenciar_usuario
+from pgs.chamadas import registrar_chamada, visualizar_chamada, delete
+from pgs.relatorios import show_relatorios
 
-# Criar tabelas se não existirem
-c.execute('''CREATE TABLE IF NOT EXISTS reunioes (ID INTEGER PRIMARY KEY, Nome TEXT, Data TEXT)''')
-c.execute('''CREATE TABLE IF NOT EXISTS unidades (ID INTEGER PRIMARY KEY, Nome TEXT)''')
-c.execute('''CREATE TABLE IF NOT EXISTS membros (ID INTEGER PRIMARY KEY, Nome TEXT, Unidade TEXT)''')
-c.execute(
-    '''CREATE TABLE IF NOT EXISTS chamadas (Reuniao_ID INTEGER, Unidade TEXT, Membro TEXT, Presenca INTEGER, Pontualidade INTEGER, Uniforme INTEGER, Modestia INTEGER)''')
-conn.commit()
+if "loggin" not in st.session_state:
+    st.session_state.loggin = False
+if "username" not in st.session_state:
+    st.session_state.username = ""
+if "user_id" not in st.session_state:
+    st.session_state.user_id = 0
 
-st.title("Registro de Chamada")
 
-menu = st.sidebar.radio("Menu",
-                        ["Cadastro de Reunião", "Cadastro de Unidade", "Cadastro de Membro", "Registrar Chamada",
-                         "Visualizar Chamadas", "Relatórios"])
+def main():
+    conn = sqlite3.connect("registro_chamada.db")
+    cursor = conn.cursor()
 
-if menu == "Cadastro de Reunião":
-    st.subheader("Cadastro de Reunião")
-    nome = st.text_input("Nome da Reunião")
-    data = st.date_input("Data", value=datetime.today())
-    if st.button("Cadastrar Reunião"):
-        c.execute("INSERT INTO reunioes (Nome, Data) VALUES (?, ?)", (nome, data))
-        conn.commit()
-        st.success("Reunião cadastrada com sucesso!")
+    img, title_text = st.columns([1, 2])
+    image = Image.open('imgs/pc_logo.jpg')
+    img.image(image, caption='Mais que um clube, uma familia')
+    title_text.title("Pioneiros da colina")
 
-elif menu == "Cadastro de Unidade":
-    st.subheader("Cadastro de Unidade")
-    nome = st.text_input("Nome da Unidade")
-    if st.button("Cadastrar Unidade"):
-        c.execute("INSERT INTO unidades (Nome) VALUES (?)", (nome,))
-        conn.commit()
-        st.success("Unidade cadastrada com sucesso!")
+    st.sidebar.title("Login section")
 
-elif menu == "Cadastro de Membro":
-    st.subheader("Cadastro de Membro")
-    unidades = pd.read_sql("SELECT Nome FROM unidades", conn)
-    nome = st.text_input("Nome do Membro")
-    unidade = st.selectbox("Unidade", unidades['Nome'] if not unidades.empty else [])
-    if st.button("Cadastrar Membro"):
-        c.execute("INSERT INTO membros (Nome, Unidade) VALUES (?, ?)", (nome, unidade))
-        conn.commit()
-        st.success("Membro cadastrado com sucesso!")
+    username = st.sidebar.text_input("User Name")
+    password = st.sidebar.text_input("Password", type='password')
 
-elif menu == "Registrar Chamada":
-    st.subheader("Registrar Chamada")
-    reunioes = pd.read_sql("SELECT * FROM reunioes", conn)
-    unidades = pd.read_sql("SELECT Nome FROM unidades", conn)
+    botao = st.sidebar.button("Entrar")
 
-    reuniao = st.selectbox("Reunião", reunioes['Nome'] if not reunioes.empty else [])
-    unidade = st.selectbox("Unidade", unidades['Nome'] if not unidades.empty else [])
+    if botao or st.session_state.loggin:
+        st.session_state.loggin = True
+        senha_hash = hash_senha(password)  # Hash da senha digitada
 
-    if reuniao and unidade:
-        membros_unidade = pd.read_sql(f"SELECT Nome FROM membros WHERE Unidade = '{unidade}'", conn)
-        registros = []
+        # Buscar usuário no banco
+        cursor.execute("SELECT nome, permissao FROM usuarios WHERE login = ? AND senha = ?", (username, senha_hash))
+        usuario = cursor.fetchone()
 
-        for _, row in membros_unidade.iterrows():
-            st.subheader(row['Nome'])
-            presenca = st.slider("Presença", 0, 10, 5, 1, key=f"presenca_{row['Nome']}")
-            pontualidade = st.slider("Pontualidade", 0, 10, 5, 1, key=f"pontualidade_{row['Nome']}")
-            uniforme = st.slider("Uniforme", 0, 10, 5, 1, key=f"uniforme_{row['Nome']}")
-            modestia = st.slider("Modéstia", 0, 10, 5, 1, key=f"modestia_{row['Nome']}")
-            print(reunioes[reunioes['Nome'] == reuniao]['ID'].values[0])
-            registros.append((int(reunioes[reunioes['Nome'] == reuniao]['ID'].values[0]),
-                              unidade,
-                              row['Nome'],
-                              presenca,
-                              pontualidade,
-                              uniforme,
-                              modestia))
+        if usuario:
+            nome, permissao = usuario
+            st.success(f"Bem-vindo, {nome}! Permissão: {permissao}")
+            st.session_state.username = nome
+            st.session_state.load_state = True
 
-        if st.button("Salvar Chamada"):
-            print(registros)
-            c.executemany(
-                "INSERT INTO chamadas (Reuniao_ID, Unidade, Membro, Presenca, Pontualidade, Uniforme, Modestia) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                registros)
-            conn.commit()
-            st.success("Chamada registrada com sucesso!")
+            type_permission = {
+                'admin': ["Cadastro de reunião", "Cadastro de unidade", "Cadastro de membros", "Registrar chamada",
+                          "Visualizar chamada", "Relatórios", "Usuário do sistema", "Deletar"],
+                'associado': ["Cadastro de reunião", "Registrar chamada", "Visualizar chamada", "Relatórios"],
+                'equipe': ["Registrar chamada", "Visualizar chamada", "Relatórios"],
+                'conselho': ["Visualizar chamada", "Relatórios"]
+                }
+            menu = type_permission[permissao]
 
-elif menu == "Visualizar Chamadas":
-    st.subheader("Chamadas Registradas")
-    chamadas = pd.read_sql(
-        "SELECT chamadas.Reuniao_ID, reunioes.Nome as Reuniao_Nome, reunioes.Data, chamadas.Unidade, chamadas.Membro, chamadas.Presenca, chamadas.Pontualidade, chamadas.Uniforme, chamadas.Modestia FROM chamadas JOIN reunioes ON chamadas.Reuniao_ID = reunioes.ID",
-        conn)
-    if not chamadas.empty:
-        st.dataframe(chamadas)
-    else:
-        st.write("Nenhuma chamada registrada ainda.")
+            choice = st.sidebar.selectbox("Selecione uma opção", menu)
 
-elif menu == "Relatórios":
-    st.subheader("Relatórios Mensais por Unidade")
-    chamadas = pd.read_sql("SELECT * FROM chamadas JOIN reunioes ON chamadas.Reuniao_ID = reunioes.ID", conn)
-    chamadas['Data'] = pd.to_datetime(chamadas['Data'])
-    chamadas['Mês'] = chamadas['Data'].dt.strftime('%Y-%m')
+            if choice == "Cadastro de reunião":
+                cadastro_reuniao(cursor, conn)
+            elif choice == "Cadastro de unidade":
+                cadastro_unidade(cursor, conn)
+            elif choice == "Cadastro de membros":
+                cadastro_membro(cursor, conn)
+            elif choice == "Registrar chamada":
+                registrar_chamada(cursor, conn)
+            elif choice == "Visualizar chamada":
+                visualizar_chamada(conn)
+            elif choice == "Relatórios":
+                show_relatorios(conn)
+            elif choice == "Usuário do sistema":
+                aba = st.radio("Selecione uma opção:", ["Cadastrar Usuário", "Gerenciar Usuários"])
+                if aba == "Cadastrar Usuário":
+                    cadastro_usuarios(cursor, conn)
+                elif aba == "Gerenciar Usuários":
+                    gerenciar_usuario(cursor, conn)
+            elif choice == "Deletar":
+                delete(cursor, conn)
 
-    unidades = chamadas['Unidade'].unique()
-    for unidade in unidades:
-        st.subheader(f"Unidade: {unidade}")
-        df_unidade = chamadas[chamadas['Unidade'] == unidade]
-        df_resumo = df_unidade.groupby('Mês')[['Presenca', 'Pontualidade', 'Uniforme', 'Modestia']].sum().reset_index()
-        df_resumo['Total Geral'] = df_resumo[['Presenca', 'Pontualidade', 'Uniforme', 'Modestia']].sum(axis=1)
-        st.dataframe(df_resumo)
+        else:
+            st.sidebar.error("Incorrect Username/Password")
 
-conn.close()
+
+if __name__ == '__main__':
+    main()
