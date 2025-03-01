@@ -3,7 +3,7 @@ import sqlite3
 from PIL import Image
 from utils.hashes import hash_senha
 
-from pgs.cadastros import cadastro_unidade, cadastro_reuniao, delete_reuniao, cadastro_membro, delete_membro, cadastro_usuarios, gerenciar_usuario
+from pgs.cadastros import cadastro_unidade, cadastro_reuniao, delete_reuniao, cadastro_membro, delete_membro, gerenciar_usuarios
 from pgs.chamadas import registrar_chamada, visualizar_chamada
 from pgs.relatorios import show_relatorios
 
@@ -36,7 +36,13 @@ def main():
         senha_hash = hash_senha(password)  # Hash da senha digitada
 
         # Buscar usuário no banco
-        cursor.execute("SELECT nome, permissao FROM usuarios WHERE login = ? AND senha = ?", (username, senha_hash))
+        cursor.execute("""
+            SELECT membros.Nome, usuarios.permissao 
+            FROM usuarios 
+            JOIN membros ON usuarios.codigo_sgc = membros.codigo_sgc 
+            WHERE usuarios.login = ? AND usuarios.senha = ?
+        """, (username, senha_hash))
+
         usuario = cursor.fetchone()
 
         if usuario:
@@ -48,7 +54,7 @@ def main():
             type_permission = {
                 'admin': ["Reuniões", "Membros", "Chamada", "Cadastro de unidade",
                           "Visualizar chamada", "Relatórios", "Usuário do sistema"],
-                'associado': ["Reuniões", "Chamada", "Visualizar chamada", "Relatórios"],
+                'associado': ["Reuniões","Membros", "Chamada", "Visualizar chamada", "Relatórios", "Usuário do sistema"],
                 'equipe': ["Chamada", "Visualizar chamada", "Relatórios"],
                 'conselho': ["Relatórios"]
                 }
@@ -79,11 +85,7 @@ def main():
                     elif menu[i] == "Relatórios":
                         show_relatorios(conn)
                     elif menu[i] == "Usuário do sistema":
-                        aba = st.radio("Selecione uma opção:", ["Cadastrar Usuário", "Gerenciar Usuários"])
-                        if aba == "Cadastrar Usuário":
-                            cadastro_usuarios(cursor, conn)
-                        elif aba == "Gerenciar Usuários":
-                            gerenciar_usuario(cursor, conn)
+                        gerenciar_usuarios(cursor, conn)
 
         else:
             st.sidebar.error("Incorrect Username/Password")
