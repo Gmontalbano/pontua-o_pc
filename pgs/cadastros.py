@@ -173,11 +173,11 @@ def gerenciar_usuarios(c, conn):
         if col1.button("💾 Salvar Alterações", key=f"salvar_{usuario_id}"):
             if senha:  # Se uma nova senha foi inserida, atualiza com hash
                 senha_hash = make_hashes(senha)
-                c.execute("UPDATE usuarios SET login = ?, senha = ?, permissao = ? WHERE id = ?",
-                          (login, senha_hash, permissao, usuario_id))
+                c.execute("UPDATE usuarios SET login = ?, senha = ?, permissao = ? WHERE codigo_sgc = ?",
+                          (login, senha_hash, permissao, codigo_sgc))
             else:  # Mantém a senha atual
-                c.execute("UPDATE usuarios SET login = ?, permissao = ? WHERE id = ?",
-                          (login, permissao, usuario_id))
+                c.execute("UPDATE usuarios SET login = ?, permissao = ? WHERE codigo_sgc = ?",
+                          (login, permissao, codigo_sgc))
 
             conn.commit()
             st.success(f"✅ Usuário atualizado com sucesso!")

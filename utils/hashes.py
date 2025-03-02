@@ -26,8 +26,6 @@ def obter_permissao(username, password):
         resultado = cursor.fetchone()
         p = resultado[1]
         n = resultado[0]
-        print(p)
-        print(n)
         if resultado:
             return p, n  # Retorna a permissão
         else:
