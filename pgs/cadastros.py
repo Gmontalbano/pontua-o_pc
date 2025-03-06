@@ -71,6 +71,7 @@ def cadastro_membro(c, conn):
     nome = st.text_input("Nome do Membro")
     unidade_nome = st.selectbox("Unidade", unidades['Nome'].tolist() if not unidades.empty else [], key='unidade_nome')
     codigo_sgc = st.text_input("Código SGC")  # Novo campo para inserir o código SGC
+    cargo = st.selectbox("Cargo", ['Conselheiro(a)', 'Desbravador(a)', 'Diretor(a) Associado(a)', 'Secretário(a)', 'Instrutor', 'Apoio', 'Tesoureiro(a)'], key="Cargo")
 
     if st.button("Cadastrar Membro"):
         if unidade_nome and codigo_sgc:
@@ -78,8 +79,8 @@ def cadastro_membro(c, conn):
             unidade_id = int(unidades[unidades['Nome'] == unidade_nome]['ID'].values[0])
 
             # Inserir o membro no banco
-            c.execute("INSERT INTO membros (Nome, id_unidade, codigo_sgc) VALUES (?, ?, ?)",
-                      (nome, unidade_id, codigo_sgc))
+            c.execute("INSERT INTO membros (Nome, id_unidade, codigo_sgc, cargo) VALUES (?, ?, ?, ?)",
+                      (nome, unidade_id, codigo_sgc, cargo))
             conn.commit()
 
             st.success(f"Membro '{nome}' cadastrado com sucesso com código SGC {codigo_sgc}!")
@@ -92,7 +93,7 @@ def cadastro_membro(c, conn):
 def delete_membro(cursor, conn):
     # Buscar membros com nome da unidade e codigo_sgc
     membros = pd.read_sql("""
-        SELECT membros.ID, membros.Nome, membros.codigo_sgc, unidades.Nome as Unidade 
+        SELECT membros.ID, membros.Nome, membros.codigo_sgc, membros.cargo, unidades.Nome as Unidade 
         FROM membros 
         JOIN unidades ON membros.id_unidade = unidades.ID
     """, conn)
@@ -107,6 +108,21 @@ def delete_membro(cursor, conn):
         # Campos de edição
         novo_nome = st.text_input("Nome", membro_info["Nome"])
         novo_codigo_sgc = st.text_input("Código SGC", membro_info["codigo_sgc"])  # Adicionado para edição do código
+        # Se `cargo` for None, define como "Selecione um cargo"
+        cargo_atual = membro_info["cargo"] if membro_info["cargo"] is not None else "Selecione um cargo"
+
+        # Lista de opções disponíveis
+        cargos_disponiveis = [
+            "Selecione um cargo", "Conselheiro(a)", "Desbravador(a)", "Diretor(a) Associado(a)",
+            "Secretário(a)", "Instrutor", "Apoio", "Tesoureiro(a)"
+        ]
+
+        # Criar o `selectbox` garantindo que sempre haverá um valor selecionado
+        novo_cargo = st.selectbox("Cargo", cargos_disponiveis,
+                                  index=cargos_disponiveis.index(
+                                      cargo_atual) if cargo_atual in cargos_disponiveis else 0,
+                                  key="Cargo_novo")
+
         unidades = membros['Unidade'].unique()
         indice_unidade = list(unidades).index(membro_info['Unidade'])
 
@@ -117,11 +133,12 @@ def delete_membro(cursor, conn):
         # **Salvar Alterações**
         if b1.button("💾 Salvar Alterações", key='Alterar'):
             nova_unidade_id = int(pd.read_sql(
-                f"SELECT ID FROM unidades WHERE Nome = ?", conn, params=[nova_unidade]
+                "SELECT ID FROM unidades WHERE Nome = ?", conn, params=[nova_unidade]
             )['ID'].values[0])
 
-            cursor.execute("UPDATE membros SET Nome = ?, codigo_sgc = ?, id_unidade = ? WHERE ID = ?",
-                           (novo_nome, novo_codigo_sgc, nova_unidade_id, membro_id))
+            # 🔹 **Atualizar também a coluna `cargo`**
+            cursor.execute("UPDATE membros SET Nome = ?, codigo_sgc = ?, id_unidade = ?, cargo = ? WHERE ID = ?",
+                           (novo_nome, novo_codigo_sgc, nova_unidade_id, novo_cargo, membro_id))
             conn.commit()
             st.success(f"✅ Membro '{novo_nome}' atualizado com sucesso!")
             st.rerun()

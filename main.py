@@ -8,6 +8,9 @@ from pgs.chamadas import registrar_chamada, visualizar_chamada
 from pgs.relatorios import show_relatorios
 from pgs.especialidades import mostrar_especialidades_usuario, gerenciar_especialidades_usuario
 from pgs.classes import mostrar_classes_usuario, gerenciar_classes_usuario
+from pgs.tesouraria import (criar_mensalidades, visualizar_relatorios, visualizar_debitos, editar_status_mensalidade,
+                            criar_eventos, editar_status_inscricao, remover_inscricao, inscrever_no_evento, editar_mensalidade, editar_evento,
+                            fechamento_mensal, gerenciar_caixa)
 
 if "loggin" not in st.session_state:
     st.session_state.loggin = False
@@ -19,6 +22,7 @@ if "sgc" not in st.session_state:
     st.session_state.sgc = 0
 
 st.set_page_config(layout="wide")
+
 
 def main():
     conn = sqlite3.connect("registro_chamada.db")
@@ -61,10 +65,10 @@ def main():
             type_permission = {
                 'admin': ["Reuniões", "Membros", "Chamada", "Cadastro de unidade",
                           "Visualizar chamada", "Relatórios", "Usuário do sistema",
-                          "Especialidades", "Classes"],
+                          "Especialidades", "Classes", "Tesouraria"],
                 'associado': ["Reuniões", "Membros", "Chamada", "Visualizar chamada",
                               "Relatórios", "Usuário do sistema",
-                              "Especialidades", "Classes"],
+                              "Especialidades", "Classes", "Tesouraria"],
                 'equipe': ["Chamada", "Visualizar chamada", "Relatórios"],
                 'conselho': ["Relatórios", "Especialidades", "Classes"]
                 }
@@ -108,9 +112,50 @@ def main():
                         elif permissao == 'associado' or permissao == 'admin':
                             mostrar_classes_usuario(conn, st.session_state.sgc)
                             gerenciar_classes_usuario(conn)
+                    elif menu[i] == "Tesouraria":
+                        with st.expander("Novo evento"):
+                            aba1 = st.selectbox("Escolha uma opção:", ['Evento', 'Mensalidade'],
+                                                key="cadastrar_opcao")
+                            if aba1 == 'Evento':
+                                criar_eventos(conn)
+                            elif aba1 == 'Mensalidade':
+                                criar_mensalidades(conn)
 
-        else:
-            st.sidebar.error("Incorrect Username/Password")
+                        with st.expander("Pagamentos"):
+                            aba2 = st.selectbox("Escolha uma opção:", ['Mensalidade', 'Evento', 'Débitos',],
+                                                key="gerenciar_opcao")
+                            if aba2 == 'Mensalidade':
+                                editar_status_mensalidade(conn)
+                            elif aba2 == 'Evento':
+                                editar_status_inscricao(conn)
+                            elif aba2 == 'Débitos':
+                                visualizar_debitos(conn)
+
+                        with st.expander('Inscrições'):
+                            aba3 = st.selectbox("Esolha uma opção:", ['Increver no evento', 'Remover de um evento'])
+                            if aba3 == 'Increver no evento':
+                                inscrever_no_evento(conn)
+                            elif aba3 == 'Remover de um evento':
+                                remover_inscricao(conn)
+
+                        with st.expander('Gerenciar eventos'):
+                            aba4 = st.selectbox("Escolha uma opção:", ['Evento', 'Mensalidade'])
+                            if aba4 == 'Evento':
+                                editar_evento(conn)
+                            if aba4 == 'Mensalidade':
+                                editar_mensalidade(conn)
+
+                        with st.expander("Relatórios"):
+                            visualizar_relatorios(conn)
+
+                        with st.expander("Caixa"):
+                            gerenciar_caixa(conn)
+
+                        with st.expander("Fechamento"):
+                            fechamento_mensal(conn)
+
+    else:
+        st.sidebar.error("Incorrect Username/Password")
 
 
 if __name__ == '__main__':
