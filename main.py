@@ -11,6 +11,10 @@ from pgs.classes import mostrar_classes_usuario, gerenciar_classes_usuario
 from pgs.tesouraria import (criar_mensalidades, visualizar_relatorios, visualizar_debitos, editar_status_mensalidade,
                             criar_eventos, editar_status_inscricao, remover_inscricao, inscrever_no_evento, editar_mensalidade, editar_evento,
                             fechamento_mensal, gerenciar_caixa)
+from pgs.patrimonio import gerenciar_patrimonio
+from pgs.solicitacoes import sol
+from pgs.ata import atas_e_atos
+from pgs.documentos import docs
 
 if "loggin" not in st.session_state:
     st.session_state.loggin = False
@@ -68,7 +72,8 @@ def main():
                           "Especialidades", "Classes", "Tesouraria"],
                 'associado': ["Reuniões", "Membros", "Chamada", "Visualizar chamada",
                               "Relatórios", "Usuário do sistema",
-                              "Especialidades", "Classes", "Tesouraria"],
+                              "Especialidades", "Classes", "Tesouraria",
+                              "Patrimonio", "Materiais", "Atas e Atos", "Documentos"],
                 'equipe': ["Chamada", "Visualizar chamada", "Relatórios"],
                 'conselho': ["Relatórios", "Especialidades", "Classes"]
                 }
@@ -153,6 +158,17 @@ def main():
 
                         with st.expander("Fechamento"):
                             fechamento_mensal(conn)
+                    elif menu[i] == "Patrimonio":
+                        gerenciar_patrimonio(conn)
+
+                    elif menu[i] == "Materiais":
+                        sol(conn)
+
+                    elif menu[i] == "Atas e Atos":
+                        atas_e_atos(conn)
+
+                    elif menu[i] == "Documentos":
+                        docs(conn)
 
     else:
         st.sidebar.error("Incorrect Username/Password")
