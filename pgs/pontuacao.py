@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 
 
-def show_relatorios(conn):
-    st.subheader("Relatórios por Unidade")
+def show_pontos(conn):
+    st.subheader("Pontuação por Unidade")
 
     # Carregar dados corretamente
     chamadas = pd.read_sql("""

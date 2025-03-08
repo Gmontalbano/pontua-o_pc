@@ -5,7 +5,7 @@ from utils.hashes import hash_senha
 
 from pgs.cadastros import cadastro_unidade, cadastro_reuniao, delete_reuniao, cadastro_membro, delete_membro, gerenciar_usuarios
 from pgs.chamadas import registrar_chamada, visualizar_chamada
-from pgs.relatorios import show_relatorios
+from pgs.pontuacao import show_pontos
 from pgs.especialidades import mostrar_especialidades_usuario, gerenciar_especialidades_usuario
 from pgs.classes import mostrar_classes_usuario, gerenciar_classes_usuario
 from pgs.tesouraria import (criar_mensalidades, visualizar_relatorios, visualizar_debitos, editar_status_mensalidade,
@@ -68,14 +68,14 @@ def main():
 
             type_permission = {
                 'admin': ["Reuniões", "Membros", "Chamada", "Cadastro de unidade",
-                          "Visualizar chamada", "Relatórios", "Usuário do sistema",
+                          "Visualizar chamada", "Pontuação", "Usuário do sistema",
                           "Especialidades", "Classes", "Tesouraria"],
                 'associado': ["Reuniões", "Membros", "Chamada", "Visualizar chamada",
-                              "Relatórios", "Usuário do sistema",
+                              "Pontuação", "Usuário do sistema",
                               "Especialidades", "Classes", "Tesouraria",
                               "Patrimonio", "Materiais", "Atas e Atos", "Documentos"],
-                'equipe': ["Chamada", "Visualizar chamada", "Relatórios"],
-                'conselho': ["Relatórios", "Especialidades", "Classes"]
+                'equipe': ["Chamada", "Visualizar chamada", "Pontuação"],
+                'conselho': ["Pontuação", "Especialidades", "Classes"]
                 }
             menu = type_permission[permissao]
 
@@ -101,8 +101,8 @@ def main():
                         registrar_chamada(cursor, conn)
                     elif menu[i] == "Visualizar chamada":
                         visualizar_chamada(conn)
-                    elif menu[i] == "Relatórios":
-                        show_relatorios(conn)
+                    elif menu[i] == "Pontuação":
+                        show_pontos(conn)
                     elif menu[i] == "Usuário do sistema":
                         gerenciar_usuarios(cursor, conn)
                     elif menu[i] == "Especialidades":
