@@ -1,8 +1,11 @@
 import pandas as pd
 import streamlit as st
 
+from pgs.db import conect_db
 
-def mostrar_especialidades_usuario(conn, codigo_sgc):
+
+def mostrar_especialidades_usuario(codigo_sgc):
+    conn, c = conect_db()
     st.subheader("📌 Especialidades do Usuário")
 
     # Verifica se o código SGC foi passado
@@ -12,10 +15,10 @@ def mostrar_especialidades_usuario(conn, codigo_sgc):
 
     # Query para buscar especialidades vinculadas ao usuário
     query = """
-        SELECT e.nome, e.codigo 
+            SELECT e.nome, e.codigo 
         FROM especialidades e
         JOIN user_especialidades eu ON e.codigo = eu.codigo_especialidade
-        WHERE eu.codigo_sgc = ?
+        WHERE eu.codigo_sgc = %s
         """
 
     df_especialidades = pd.read_sql(query, conn, params=[codigo_sgc])
@@ -25,13 +28,16 @@ def mostrar_especialidades_usuario(conn, codigo_sgc):
         st.info("📌 Este usuário não possui especialidades cadastradas.")
     else:
         st.dataframe(df_especialidades)
+    c.close()
+    conn.close()
 
 
-def gerenciar_especialidades_usuario(conn):
+def gerenciar_especialidades_usuario():
+    conn, cursor = conect_db()
     st.subheader("📌 Gerenciar Especialidades do Usuário")
 
     # Buscar usuários disponíveis
-    usuarios = pd.read_sql("SELECT codigo_sgc, Nome FROM membros", conn)
+    usuarios = pd.read_sql("SELECT codigo_sgc, nome FROM membros", conn)
 
     if usuarios.empty:
         st.warning("⚠️ Nenhum usuário encontrado.")
@@ -39,10 +45,10 @@ def gerenciar_especialidades_usuario(conn):
 
     # Seleção do usuário
     usuario_selecionado = st.selectbox("Selecione um Usuário",
-                                       usuarios["codigo_sgc"] + " - " + usuarios["Nome"], index=0)
+                                       usuarios["codigo_sgc"] + " - " + usuarios["nome"], index=0)
 
     # Obter o código SGC real do usuário selecionado
-    codigo_sgc = usuarios.loc[usuarios["codigo_sgc"] + " - " + usuarios["Nome"] == usuario_selecionado, "codigo_sgc"].values[0]
+    codigo_sgc = usuarios.loc[usuarios["codigo_sgc"] + " - " + usuarios["nome"] == usuario_selecionado, "codigo_sgc"].values[0]
 
     # Buscar todas as especialidades disponíveis
     especialidades = pd.read_sql("SELECT codigo, nome FROM especialidades", conn)
@@ -53,7 +59,7 @@ def gerenciar_especialidades_usuario(conn):
 
     # Buscar especialidades que o usuário já possui
     especialidades_usuario = pd.read_sql(
-        "SELECT codigo_especialidade FROM user_especialidades WHERE codigo_sgc = ?",
+        "SELECT codigo_especialidade FROM user_especialidades WHERE codigo_sgc = %s",
         conn, params=[codigo_sgc]
     )
 
@@ -73,7 +79,6 @@ def gerenciar_especialidades_usuario(conn):
     # Ordenar pelo prefixo (XX) e depois pelo número (YYY)
     especialidades = especialidades.sort_values(by=["prefixo", "numero"]).drop(
         columns=["prefixo", "numero"])  # Remover colunas temporárias
-
 
     # Criar `st.radio()` para cada especialidade
     for _, row in especialidades.iterrows():
@@ -101,13 +106,15 @@ def gerenciar_especialidades_usuario(conn):
         for codigo_especialidade, resposta in selecoes.items():
             if resposta == "Sim" and codigo_especialidade not in especialidades_usuario:
                 # Adicionar especialidade ao usuário
-                cursor.execute("INSERT INTO user_especialidades (codigo_sgc, codigo_especialidade) VALUES (?, ?)",
+                cursor.execute("INSERT INTO user_especialidades (codigo_sgc, codigo_especialidade) VALUES (%s, %s)",
                                (codigo_sgc, codigo_especialidade))
             elif resposta == "Não" and codigo_especialidade in especialidades_usuario:
                 # Remover especialidade do usuário
-                cursor.execute("DELETE FROM user_especialidades WHERE codigo_sgc = ? AND codigo_especialidade = ?",
+                cursor.execute("DELETE FROM user_especialidades WHERE codigo_sgc = %s AND codigo_especialidade = %s",
                                (codigo_sgc, codigo_especialidade))
 
         conn.commit()
         st.success("✅ Especialidades atualizadas com sucesso!")
         st.rerun()
+    cursor.close()
+    conn.close()

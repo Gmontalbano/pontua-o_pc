@@ -1,28 +1,29 @@
 import streamlit as st
 import pandas as pd
 
+from pgs.db import conect_db
 
-def show_pontos(conn):
+
+def show_pontos():
+    conn, c = conect_db()
     st.subheader("Pontuação por Unidade")
 
     # Carregar dados corretamente
     chamadas = pd.read_sql("""
         SELECT 
-    chamadas.*, 
-    reunioes.Nome AS Reuniao_Nome, 
-    reunioes.Data AS Data,  -- Pegando a data da reunião
-    unidades.Nome AS Unidade_Nome
-    FROM chamadas
-    JOIN reunioes ON chamadas.Reuniao_ID = reunioes.ID
-    JOIN unidades ON chamadas.id_unidade = unidades.ID
+            chamadas.*, 
+            reunioes.nome AS Reuniao_Nome, 
+            reunioes.data::DATE AS Data, 
+            unidades.nome AS Unidade_Nome,
+            EXTRACT(YEAR FROM reunioes.data) AS Ano, 
+            EXTRACT(MONTH FROM reunioes.data) AS Mês
+        FROM chamadas
+        JOIN reunioes ON chamadas.reuniao_id = reunioes.id
+        JOIN unidades ON chamadas.id_unidade = unidades.id
     """, conn)
 
-    chamadas['Data'] = pd.to_datetime(chamadas['Data'])
-    chamadas['Mês'] = chamadas['Data'].dt.strftime('%Y-%m')
-    chamadas['Ano'] = chamadas['Data'].dt.year
-
     # Criar ranking geral
-    ranking = chamadas.groupby('Unidade_Nome')[['Presenca', 'Pontualidade', 'Uniforme', 'Modestia']].sum()
+    ranking = chamadas.groupby('unidade_nome')[['presenca', 'pontualidade', 'uniforme', 'modestia']].sum()
     ranking['Total Geral'] = ranking.sum(axis=1)
     ranking = ranking.sort_values(by='Total Geral', ascending=False)
 
@@ -31,11 +32,13 @@ def show_pontos(conn):
     st.dataframe(ranking)
 
     # Exibir relatórios por unidade
-    for unidade in chamadas['Unidade_Nome'].unique():
+    for unidade in chamadas['unidade_nome'].unique():
         st.subheader(f"Unidade: {unidade}")
-        df_unidade = chamadas[chamadas['Unidade_Nome'] == unidade]
+        df_unidade = chamadas[chamadas['unidade_nome'] == unidade]
 
-        df_resumo = df_unidade.groupby('Mês')[['Presenca', 'Pontualidade', 'Uniforme', 'Modestia']].sum().reset_index()
-        df_resumo['Total Geral'] = df_resumo[['Presenca', 'Pontualidade', 'Uniforme', 'Modestia']].sum(axis=1)
+        df_resumo = df_unidade.groupby('mês')[['presenca', 'pontualidade', 'uniforme', 'modestia']].sum().reset_index()
+        df_resumo['Total Geral'] = df_resumo[['presenca', 'pontualidade', 'uniforme', 'modestia']].sum(axis=1)
 
         st.dataframe(df_resumo)
+    c.close()
+    conn.close()

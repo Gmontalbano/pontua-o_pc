@@ -1,20 +1,23 @@
 import streamlit as st
 import pandas as pd
 
+from pgs.db import conect_db
 
-def registrar_chamada(c, conn):
+
+def registrar_chamada():
+    conn, c = conect_db()
     st.subheader("Registrar Chamada")
 
     # Buscar reuniões e unidades
     reunioes = pd.read_sql("SELECT * FROM reunioes", conn)
     unidades = pd.read_sql("SELECT ID, Nome FROM unidades", conn)
 
-    reuniao = st.selectbox("Reunião", reunioes['Nome'] if not reunioes.empty else [])
-    unidade_nome = st.selectbox("Unidade", unidades['Nome'] if not unidades.empty else [])
+    reuniao = st.selectbox("Reunião", reunioes['nome'] if not reunioes.empty else [])
+    unidade_nome = st.selectbox("Unidade", unidades['nome'] if not unidades.empty else [])
 
     if reuniao and unidade_nome:
-        reuniao_id = int(reunioes[reunioes['Nome'] == reuniao]['ID'].values[0])
-        unidade_id = int(unidades[unidades['Nome'] == unidade_nome]['ID'].values[0])
+        reuniao_id = int(reunioes[reunioes['nome'] == reuniao]['id'].values[0])
+        unidade_id = int(unidades[unidades['nome'] == unidade_nome]['id'].values[0])
 
         # Buscar membros da unidade correta, incluindo o cargo
         membros_unidade = pd.read_sql(f"""
@@ -27,7 +30,7 @@ def registrar_chamada(c, conn):
             cargo = row["cargo"] if row["cargo"] else "Sem Cargo"  # Tratamento para cargos vazios
             if cargo not in membros_por_cargo:
                 membros_por_cargo[cargo] = []
-            membros_por_cargo[cargo].append(row["Nome"])
+            membros_por_cargo[cargo].append(row["nome"])
 
         registros = []
 
@@ -40,19 +43,19 @@ def registrar_chamada(c, conn):
 
                 # 🔹 Buscar chamada existente para este membro, reunião e unidade
                 chamada_existente = pd.read_sql(f"""
-                    SELECT Presenca, Pontualidade, Uniforme, Modestia
+                    SELECT presenca, pontualidade, uniforme, modestia
                     FROM chamadas
-                    WHERE Reuniao_ID = {reuniao_id} 
+                    WHERE reuniao_id = {reuniao_id} 
                     AND id_unidade = {unidade_id} 
-                    AND Membro = '{nome}'
+                    AND membro = '{nome}'
                 """, conn)
 
                 # 🔹 Preencher com valores já existentes ou padrão 0
                 if not chamada_existente.empty:
-                    presenca_valor = chamada_existente['Presenca'].values[0]
-                    pontualidade_valor = chamada_existente['Pontualidade'].values[0]
-                    uniforme_valor = chamada_existente['Uniforme'].values[0]
-                    modestia_valor = chamada_existente['Modestia'].values[0]
+                    presenca_valor = chamada_existente['presenca'].values[0]
+                    pontualidade_valor = chamada_existente['pontualidade'].values[0]
+                    uniforme_valor = chamada_existente['uniforme'].values[0]
+                    modestia_valor = chamada_existente['modestia'].values[0]
                 else:
                     presenca_valor = 0
                     pontualidade_valor = 0
@@ -76,7 +79,7 @@ def registrar_chamada(c, conn):
                 # Verifica se a chamada já existe
                 c.execute("""
                     SELECT COUNT(*) FROM chamadas 
-                    WHERE Reuniao_ID = ? AND id_unidade = ? AND Membro = ?
+                    WHERE Reuniao_ID = %s AND id_unidade = %s AND Membro = %s
                 """, (r[0], r[1], r[2]))
 
                 existe = c.fetchone()[0]
@@ -85,23 +88,25 @@ def registrar_chamada(c, conn):
                     # Atualiza os dados existentes
                     c.execute("""
                         UPDATE chamadas 
-                        SET Presenca = ?, Pontualidade = ?, Uniforme = ?, Modestia = ? 
-                        WHERE Reuniao_ID = ? AND id_unidade = ? AND Membro = ?
+                        SET Presenca = %s, Pontualidade = %s, Uniforme = %s, Modestia = %s 
+                        WHERE Reuniao_ID = %s AND id_unidade = %s AND Membro = %s
                     """, (r[3], r[4], r[5], r[6], r[0], r[1], r[2]))
                 else:
                     # Insere um novo registro
                     c.execute("""
                         INSERT INTO chamadas (Reuniao_ID, id_unidade, Membro, Presenca, Pontualidade, Uniforme, Modestia) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """, r)
 
             conn.commit()
             st.success("Chamada registrada/atualizada com sucesso!")
             st.rerun()
+    c.close()
+    conn.close()
 
 
-
-def visualizar_chamada(conn):
+def visualizar_chamada():
+    conn, c = conect_db()
     st.subheader("Chamadas Registradas")
     chamadas = pd.read_sql(
         """SELECT chamadas.ID, 
@@ -119,6 +124,8 @@ def visualizar_chamada(conn):
         st.dataframe(chamadas)
     else:
         st.write("Nenhuma chamada registrada ainda.")
+    c.close()
+    conn.close()
 
 
 

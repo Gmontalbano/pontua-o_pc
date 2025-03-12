@@ -1,12 +1,10 @@
-import streamlit as st
-
-import sqlite3
 import pandas as pd
 import streamlit as st
 from datetime import datetime
+from pgs.db import conect_db
 
-
-def criar_mensalidades(conn):
+def criar_mensalidades():
+    conn, c = conect_db()
     st.subheader("📌 Criar Mensalidades")
 
     # Entrada de dados para a mensalidade
@@ -18,7 +16,7 @@ def criar_mensalidades(conn):
 
         # Criar mensalidades para os 12 meses do ano selecionado
         for mes in range(1, 13):
-            cursor.execute("INSERT INTO mensalidades (valor, ano, mes) VALUES (?, ?, ?)", (valor, ano, mes))
+            cursor.execute("INSERT INTO mensalidades (valor, ano, mes) VALUES (%s,%s,%s)", (valor, ano, mes))
 
             # Recuperar o ID da mensalidade recém-criada
             id_mensalidade = cursor.lastrowid
@@ -31,15 +29,18 @@ def criar_mensalidades(conn):
             # Explodir mensalidade para todos os desbravadores
             for membro in membros:
                 cursor.execute(
-                    "INSERT INTO user_mensalidades (id_mensalidade, codigo_sgc, status) VALUES (?, ?, ?)",
+                    "INSERT INTO user_mensalidades (id_mensalidade, codigo_sgc, status) VALUES (%s, %s, %s)",
                     (id_mensalidade, membro[0], "Pendente")
                 )
 
         conn.commit()
         st.success("✅ Mensalidades criadas para os 12 meses e atribuídas aos desbravadores!")
+        c.close()
+        conn.close()
 
 
-def criar_eventos(conn):
+def criar_eventos():
+    conn, c = conect_db()
     st.subheader("📌 Criar Eventos")
 
     nome_evento = st.text_input("Nome do Evento")
@@ -47,33 +48,36 @@ def criar_eventos(conn):
 
     if st.button("💾 Criar Evento"):
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO evento (Nome, valor) VALUES (?, ?)",
+        cursor.execute("INSERT INTO evento (Nome, valor) VALUES (%s, %s)",
                        (nome_evento, valor_evento))
         conn.commit()
         st.success(f"✅ Evento '{nome_evento}' criado com sucesso!")
+    c.close()
+    conn.close()
 
 
-def inscrever_no_evento(conn):
+def inscrever_no_evento():
+    conn, c = conect_db()
     st.subheader("📌 Inscrever em Evento")
 
     # Buscar eventos disponíveis
-    eventos = pd.read_sql("SELECT id, Nome FROM evento", conn)
+    eventos = pd.read_sql("SELECT id, nome FROM evento", conn)
     if eventos.empty:
         st.warning("⚠️ Nenhum evento encontrado. Cadastre um evento antes de inscrever participantes.")
         return
 
     # Selecionar evento
-    evento_selecionado = st.selectbox("Selecione um Evento", eventos["Nome"], key="select_evento")
-    evento_id = eventos.loc[eventos["Nome"] == evento_selecionado, "id"].values[0]
+    evento_selecionado = st.selectbox("Selecione um Evento", eventos["nome"], key="select_evento")
+    evento_id = eventos.loc[eventos["nome"] == evento_selecionado, "id"].values[0]
 
     # Buscar membros (desbravadores)
-    membros = pd.read_sql("SELECT codigo_sgc, Nome FROM membros ", conn)
+    membros = pd.read_sql("SELECT codigo_sgc, nome FROM membros ", conn)
     if membros.empty:
         st.warning("⚠️ Nenhum desbravador encontrado para inscrição.")
         return
 
     # Criar coluna formatada para exibir "Código SGC - Nome"
-    membros["display"] = membros["codigo_sgc"] + " - " + membros["Nome"]
+    membros["display"] = membros["codigo_sgc"] + " - " + membros["nome"]
 
     # Selecionar o membro no formato desejado
     membro_selecionado = st.selectbox("Selecione um Desbravador", membros["display"], key="select_membro")
@@ -83,18 +87,21 @@ def inscrever_no_evento(conn):
     evento_id = int(evento_id)
     if st.button("💾 Inscrever"):
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO inscricao_eventos (codigo_sgc, id_evento, status) VALUES (?, ?, 'Pendente')",
+        cursor.execute("INSERT INTO inscricao_eventos (codigo_sgc, id_evento, status) VALUES (%s, %s, 'Pendente')",
                        (codigo_sgc, evento_id))
         conn.commit()
         st.success(f"✅ {membro_selecionado} foi inscrito no evento '{evento_selecionado}'!")
         st.rerun()
+    c.close()
+    conn.close()
 
 
-def editar_status_inscricao(conn):
+def editar_status_inscricao():
+    conn, c = conect_db()
     st.subheader("✏️ Editar Status de Pagamento")
 
     # Buscar eventos existentes
-    eventos = pd.read_sql("SELECT id, Nome, valor FROM evento", conn)
+    eventos = pd.read_sql("SELECT id, nome, valor FROM evento", conn)
     if eventos.empty:
         st.warning("⚠️ Nenhum evento encontrado.")
         return
@@ -102,22 +109,22 @@ def editar_status_inscricao(conn):
     # Selecionar um evento
     evento_selecionado = st.selectbox(
         "Selecione um Evento",
-        eventos["Nome"],
+        eventos["nome"],
         key="editar_evento"
     )
 
     # Obter ID e valor do evento selecionado
-    evento_id = int(eventos.loc[eventos["Nome"] == evento_selecionado, "id"].values[0])
+    evento_id = int(eventos.loc[eventos["nome"] == evento_selecionado, "id"].values[0])
     valor_evento = float(eventos.loc[eventos["id"] == evento_id, "valor"].values[0])
 
     st.write(f"💰 **Valor do Evento:** R$ {valor_evento:.2f}")
 
     # Buscar inscritos no evento
     inscritos = pd.read_sql("""
-        SELECT ie.codigo_sgc, m.Nome, ie.status 
+        SELECT ie.codigo_sgc, m.nome, ie.status 
         FROM inscricao_eventos ie
         JOIN membros m ON ie.codigo_sgc = m.codigo_sgc
-        WHERE ie.id_evento = ?
+        WHERE ie.id_evento = %s
     """, conn, params=[evento_id])
 
     if inscritos.empty:
@@ -125,7 +132,7 @@ def editar_status_inscricao(conn):
         return
 
     # Criar coluna "Código SGC - Nome" para exibição
-    inscritos["display"] = inscritos["codigo_sgc"] + " - " + inscritos["Nome"]
+    inscritos["display"] = inscritos["codigo_sgc"] + " - " + inscritos["nome"]
 
     # Selecionar um inscrito para edição
     inscrito_selecionado = st.selectbox("Selecione um Desbravador", inscritos["display"], key=f"inscrito_{evento_id}")
@@ -152,8 +159,8 @@ def editar_status_inscricao(conn):
         if status_atual != novo_status:
             cursor.execute("""
                 UPDATE inscricao_eventos 
-                SET status = ? 
-                WHERE id_evento = ? AND codigo_sgc = ?
+                SET status = %s 
+                WHERE id_evento = %s AND codigo_sgc = %s
             """, (novo_status, evento_id, codigo_sgc))
 
             # Se mudou de "Pendente" ou "Cancelado" para "Pago", registrar no caixa
@@ -163,34 +170,36 @@ def editar_status_inscricao(conn):
 
                 cursor.execute("""
                     INSERT INTO caixa (tipo, descricao, valor, data, id_evento) 
-                    VALUES ('Entrada', ?, ?, ?, ?)
+                    VALUES ('Entrada', %s, %s, %s, %s)
                 """, (descricao, valor_evento, data_hoje, evento_id))  # 🔹 Agora salva o ID do evento!
 
         conn.commit()
         st.success(f"✅ Status atualizado com sucesso para {inscrito_selecionado}!")
         st.rerun()
+    c.close()
+    conn.close()
 
 
-
-def remover_inscricao(conn):
+def remover_inscricao():
+    conn, c = conect_db()
     st.subheader("🗑️ Remover Inscrição")
 
     # Buscar eventos disponíveis
-    eventos = pd.read_sql("SELECT id, Nome FROM evento", conn)
+    eventos = pd.read_sql("SELECT id, nome FROM evento", conn)
     if eventos.empty:
         st.warning("⚠️ Nenhum evento encontrado.")
         return
 
     # Selecionar evento
-    evento_selecionado = st.selectbox("Selecione um Evento", eventos["Nome"], key="remover_evento")
-    evento_id = eventos.loc[eventos["Nome"] == evento_selecionado, "id"].values[0]
+    evento_selecionado = st.selectbox("Selecione um Evento", eventos["nome"], key="remover_evento")
+    evento_id = eventos.loc[eventos["nome"] == evento_selecionado, "id"].values[0]
 
     # Buscar inscritos no evento
     inscritos = pd.read_sql("""
-        SELECT ie.codigo_sgc, m.Nome 
+        SELECT ie.codigo_sgc, m.nome 
         FROM inscricao_eventos ie
         JOIN membros m ON ie.codigo_sgc = m.codigo_sgc
-        WHERE ie.id_evento = ?
+        WHERE ie.id_evento = %s
     """, conn, params=[evento_id])
 
     if inscritos.empty:
@@ -198,22 +207,25 @@ def remover_inscricao(conn):
         return
 
     # Selecionar inscrito para remover
-    inscrito_selecionado = st.selectbox("Selecione um Desbravador para remover", inscritos["Nome"], key="select_remover")
-    codigo_sgc = inscritos.loc[inscritos["Nome"] == inscrito_selecionado, "codigo_sgc"].values[0]
+    inscrito_selecionado = st.selectbox("Selecione um Desbravador para remover", inscritos["nome"], key="select_remover")
+    codigo_sgc = inscritos.loc[inscritos["nome"] == inscrito_selecionado, "codigo_sgc"].values[0]
 
     if st.button("❌ Remover Inscrição", key="remover_inscricao"):
         cursor = conn.cursor()
         cursor.execute("""
             DELETE FROM inscricao_eventos 
-            WHERE id_evento = ? AND codigo_sgc = ?
+            WHERE id_evento = %s AND codigo_sgc = %s
         """, (evento_id, codigo_sgc))
 
         conn.commit()
         st.warning(f"⚠️ {inscrito_selecionado} foi removido do evento '{evento_selecionado}'.")
         st.rerun()
+    c.close()
+    conn.close()
 
 
-def visualizar_relatorios(conn):
+def visualizar_relatorios():
+    conn, c = conect_db()
     st.subheader("📊 Relatórios Financeiros")
 
     # 🔹 Visão Geral por Ano (Usando a tabela de fechamento)
@@ -252,14 +264,14 @@ def visualizar_relatorios(conn):
 
     # Buscar eventos com movimentações no caixa
     eventos = pd.read_sql("""
-        SELECT DISTINCT e.id, e.Nome 
+        SELECT DISTINCT e.id, e.nome 
         FROM evento e
         JOIN caixa c ON e.id = c.id_evento
     """, conn)
 
     if not eventos.empty:
         # Criar dicionário de eventos para exibição
-        evento_dict = {f"{row['Nome']}": row["id"] for _, row in eventos.iterrows()}
+        evento_dict = {f"{row['nome']}": row["id"] for _, row in eventos.iterrows()}
         evento_selecionado = st.selectbox("Selecione um Evento ou Mensalidade", list(evento_dict.keys()))
 
         # Obter o ID real do evento selecionado
@@ -269,7 +281,7 @@ def visualizar_relatorios(conn):
         df_evento = pd.read_sql("""
             SELECT data, tipo, descricao, valor
             FROM caixa
-            WHERE id_evento = ?
+            WHERE id_evento = %s
             ORDER BY data DESC
         """, conn, params=[id_evento])
 
@@ -349,7 +361,7 @@ def visualizar_relatorios(conn):
     if not anos.empty:
         ano_selecionado = st.selectbox("Selecione o Ano", anos["ano"])
 
-        meses = pd.read_sql("SELECT DISTINCT mes FROM mensalidades WHERE ano = ? ORDER BY mes ASC", conn,
+        meses = pd.read_sql("SELECT DISTINCT mes FROM mensalidades WHERE ano = %s ORDER BY mes ASC", conn,
                             params=[ano_selecionado])
         if not meses.empty:
             mes_selecionado = st.selectbox("Selecione o Mês", meses["mes"])
@@ -358,7 +370,7 @@ def visualizar_relatorios(conn):
                 SELECT um.status, COUNT(*) as total_mensalidades, COUNT(DISTINCT um.codigo_sgc) as total_usuarios
                 FROM user_mensalidades um
                 JOIN mensalidades m ON um.id_mensalidade = m.id
-                WHERE m.ano = ? AND m.mes = ?
+                WHERE m.ano = %s AND m.mes = %s
                 GROUP BY um.status
             """, conn, params=[ano_selecionado, mes_selecionado])
 
@@ -392,26 +404,29 @@ def visualizar_relatorios(conn):
 
     else:
         st.warning("⚠️ Nenhum dado encontrado na tabela de mensalidades.")
+    c.close()
+    conn.close()
 
 
-def editar_status_mensalidade(conn):
+def editar_status_mensalidade():
+    conn, c = conect_db()
     st.subheader("✏️ Editar Status de Pagamento")
 
     # Buscar todos os desbravadores com mensalidades
     desbravadores = pd.read_sql("""
-        SELECT DISTINCT m.codigo_sgc, m.Nome
+        SELECT DISTINCT m.codigo_sgc, m.nome
         FROM membros m
         JOIN user_mensalidades um ON m.codigo_sgc = um.codigo_sgc
         WHERE m.cargo = 'Desbravador(a)'
-        ORDER BY m.Nome
+        ORDER BY m.nome
     """, conn)
 
     if desbravadores.empty:
         st.warning("⚠️ Nenhum desbravador encontrado com mensalidades registradas.")
         return
 
-    # Criar selectbox formatado como "Código SGC - Nome"
-    desbravadores["display"] = desbravadores["codigo_sgc"] + " - " + desbravadores["Nome"]
+    # Criar selectbox formatado como "Código SGC - nome"
+    desbravadores["display"] = desbravadores["codigo_sgc"] + " - " + desbravadores["nome"]
 
     # Selecionar o desbravador
     desbravador_selecionado = st.selectbox("Selecione um Desbravador", desbravadores["display"])
@@ -424,7 +439,7 @@ def editar_status_mensalidade(conn):
         SELECT um.id_mensalidade, um.status AS status_atual, m.ano, m.mes, m.valor
         FROM user_mensalidades um
         JOIN mensalidades m ON um.id_mensalidade = m.id
-        WHERE um.codigo_sgc = ?
+        WHERE um.codigo_sgc = %s
         ORDER BY m.ano, m.mes
     """, conn, params=[codigo_sgc])
 
@@ -468,8 +483,8 @@ def editar_status_mensalidade(conn):
             if status_atual != novo_status:
                 cursor.execute("""
                     UPDATE user_mensalidades 
-                    SET status = ? 
-                    WHERE id_mensalidade = ? AND codigo_sgc = ?
+                    SET status = %s 
+                    WHERE id_mensalidade = %s AND codigo_sgc = %s
                 """, (novo_status, id_mensalidade, codigo_sgc))
 
                 # Se mudou de "Pendente" ou "Isento" para "Pago", registrar no caixa
@@ -479,20 +494,23 @@ def editar_status_mensalidade(conn):
 
                     cursor.execute("""
                         INSERT INTO caixa (tipo, descricao, valor, data) 
-                        VALUES ('Entrada', ?, ?, ?)
+                        VALUES ('Entrada', %s, %s, %s)
                     """, (descricao, valor, data_hoje))
 
         conn.commit()
         st.success("✅ Status atualizado com sucesso!")
         st.rerun()
+    c.close()
+    conn.close()
 
 
-def visualizar_debitos(conn):
+def visualizar_debitos():
+    conn, c = conect_db()
     st.subheader("💰 Débitos dos Desbravadores")
 
     # Buscar desbravadores que possuem mensalidades ou eventos pendentes
     membros = pd.read_sql("""
-        SELECT DISTINCT m.codigo_sgc, m.Nome 
+        SELECT DISTINCT m.codigo_sgc, m.nome 
         FROM membros m
         LEFT JOIN user_mensalidades um ON um.codigo_sgc = m.codigo_sgc AND um.status = 'Pendente'
         LEFT JOIN inscricao_eventos ie ON ie.codigo_sgc = m.codigo_sgc AND ie.status = 'Pendente'
@@ -502,8 +520,8 @@ def visualizar_debitos(conn):
         st.success("🎉 Nenhum desbravador tem débitos pendentes!")
         return
 
-    # Criar coluna formatada "Código SGC - Nome"
-    membros["display"] = membros["codigo_sgc"] + " - " + membros["Nome"]
+    # Criar coluna formatada "Código SGC - nome"
+    membros["display"] = membros["codigo_sgc"] + " - " + membros["nome"]
 
     # Selecionar membro
     membro_selecionado = st.selectbox("Selecione um Desbravador", membros["display"])
@@ -516,15 +534,15 @@ def visualizar_debitos(conn):
         SELECT um.id_mensalidade, um.status, m.valor, m.mes, m.ano 
         FROM user_mensalidades um
         JOIN mensalidades m ON um.id_mensalidade = m.id
-        WHERE um.codigo_sgc = ? AND um.status = 'Pendente'
+        WHERE um.codigo_sgc = %s AND um.status = 'Pendente'
     """, conn, params=[codigo_sgc])
 
     # 🔹 Buscar eventos inscritos e não pagos
     eventos = pd.read_sql("""
-        SELECT e.Nome, e.valor 
+        SELECT e.nome, e.valor 
         FROM inscricao_eventos ie
         JOIN evento e ON ie.id_evento = e.id
-        WHERE ie.codigo_sgc = ? AND ie.status = 'Pendente'
+        WHERE ie.codigo_sgc = %s AND ie.status = 'Pendente'
     """, conn, params=[codigo_sgc])
 
     # Calcular valores totais
@@ -543,28 +561,30 @@ def visualizar_debitos(conn):
 
     # Exibir valor total dos débitos
     st.write(f"### 💰 **Total de Débitos: R$ {total_debitos:.2f}**")
+    c.close()
+    conn.close()
 
 
-
-def editar_evento(conn):
+def editar_evento():
+    conn, c = conect_db()
     st.subheader("✏️ Gerenciar Evento")
 
     # Buscar eventos existentes
-    eventos = pd.read_sql("SELECT id, Nome, valor FROM evento", conn)
+    eventos = pd.read_sql("SELECT id, nome, valor FROM evento", conn)
 
     if eventos.empty:
         st.warning("⚠️ Nenhum evento encontrado para gerenciamento.")
         return
 
     # Selecionar evento para gerenciar
-    evento_selecionado = st.selectbox("Selecione o Evento", eventos["Nome"], key="select_evento_gerenciar")
+    evento_selecionado = st.selectbox("Selecione o Evento", eventos["nome"], key="select_evento_gerenciar")
 
     # Obter ID e valor do evento selecionado
-    evento_id = eventos.loc[eventos["Nome"] == evento_selecionado, "id"].values[0]
-    valor_atual = float(eventos.loc[eventos["Nome"] == evento_selecionado, "valor"].values[0])
+    evento_id = eventos.loc[eventos["nome"] == evento_selecionado, "id"].values[0]
+    valor_atual = float(eventos.loc[eventos["nome"] == evento_selecionado, "valor"].values[0])
 
     # Campos de edição
-    novo_nome = st.text_input("Novo Nome", evento_selecionado)
+    novo_nome = st.text_input("Novo nome", evento_selecionado)
     novo_valor = st.number_input("Novo Valor", min_value=0.0, value=valor_atual, format="%.2f")
 
     col1, col2 = st.columns(2)
@@ -574,8 +594,8 @@ def editar_evento(conn):
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE evento 
-            SET Nome = ?, valor = ?
-            WHERE id = ?
+            SET nome = %s, valor = %s
+            WHERE id = %s
         """, (novo_nome, novo_valor, evento_id))
         conn.commit()
         st.success(f"✅ Evento '{novo_nome}' atualizado com sucesso!")
@@ -584,15 +604,18 @@ def editar_evento(conn):
     # Botão para deletar evento
     if col2.button("❌ Excluir Evento", key=f"delete_evento_{evento_id}"):
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM inscricao_eventos WHERE id_evento = ?", (evento_id,))
+        cursor.execute("DELETE FROM inscricao_eventos WHERE id_evento = %s", (evento_id,))
         conn.commit()
-        cursor.execute("DELETE FROM evento WHERE id = ?", (evento_id,))
+        cursor.execute("DELETE FROM evento WHERE id = %s", (evento_id,))
         conn.commit()
         st.warning(f"⚠️ Evento '{evento_selecionado}' e todas as inscrições foram removidos!")
         st.rerun()
+    c.close()
+    conn.close()
 
 
-def editar_mensalidade(conn):
+def editar_mensalidade():
+    conn, c = conect_db()
     st.subheader("✏️ Editar Mensalidade")
 
     # Buscar mensalidades existentes
@@ -618,16 +641,19 @@ def editar_mensalidade(conn):
         # Atualizar o valor da mensalidade na tabela principal
         cursor.execute("""
             UPDATE mensalidades 
-            SET valor = ?
-            WHERE id = ?
+            SET valor = %s
+            WHERE id = %s
         """, (novo_valor, mensalidade_id))
 
         conn.commit()
         st.success(f"✅ Mensalidade '{mensalidade_selecionada}' atualizada com sucesso!")
         st.rerun()
+    c.close()
+    conn.close()
 
 
-def gerenciar_caixa(conn):
+def gerenciar_caixa():
+    conn, c = conect_db()
     st.subheader("📌 Gerenciar Caixa")
 
     # 🔹 Entrada de dados
@@ -637,8 +663,8 @@ def gerenciar_caixa(conn):
     data = st.date_input("Data da Transação")
 
     # 🔹 Buscar eventos disponíveis para vinculação
-    eventos = pd.read_sql("SELECT id, Nome FROM evento", conn)
-    eventos_dict = {f"{row['Nome']}": row["id"] for _, row in eventos.iterrows()}
+    eventos = pd.read_sql("SELECT id, nome FROM evento", conn)
+    eventos_dict = {f"{row['nome']}": row["id"] for _, row in eventos.iterrows()}
     eventos_dict["Nenhum"] = None  # Opção para não vincular a um evento
 
     evento_selecionado = st.selectbox("Vincular a um Evento (Opcional)", list(eventos_dict.keys()))
@@ -648,7 +674,7 @@ def gerenciar_caixa(conn):
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO caixa (tipo, descricao, valor, data, id_evento) 
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
         """, (tipo, descricao, valor, data.strftime("%Y-%m-%d"), id_evento))
         conn.commit()
         st.success("✅ Transação registrada com sucesso!")
@@ -656,7 +682,7 @@ def gerenciar_caixa(conn):
 
     # 🔹 Exibir registros
     df_caixa = pd.read_sql("""
-        SELECT c.id, c.tipo, c.descricao, c.valor, c.data, e.Nome as evento_relacionado
+        SELECT c.id, c.tipo, c.descricao, c.valor, c.data, e.nome as evento_relacionado
         FROM caixa c
         LEFT JOIN evento e ON c.id_evento = e.id
         ORDER BY c.data DESC
@@ -668,10 +694,12 @@ def gerenciar_caixa(conn):
         st.dataframe(df_caixa)
     else:
         st.info("📌 Nenhuma transação encontrada.")
+    c.close()
+    conn.close()
 
 
-
-def fechamento_mensal(conn):
+def fechamento_mensal():
+    conn, c = conect_db()
     st.subheader("📌 Fechamento Mensal")
 
     # Selecionar o mês e ano
@@ -679,32 +707,44 @@ def fechamento_mensal(conn):
     ano = st.number_input("Ano", min_value=2000, max_value=2100, value=pd.Timestamp.today().year, step=1)
 
     # Verificar se já foi fechado
-    verifica_fechamento = pd.read_sql("SELECT * FROM fechamento WHERE mes = ? AND ano = ?", conn, params=[mes, ano])
+    verifica_fechamento = pd.read_sql("SELECT * FROM fechamento WHERE mes = %s AND ano = %s", conn, params=[mes, ano])
     if not verifica_fechamento.empty:
         st.warning("⚠️ Este mês já foi fechado!")
         return
 
     # Calcular entradas e saídas do mês
-    df_movimentacoes = pd.read_sql("""
-        SELECT tipo, SUM(valor) as total 
-        FROM caixa 
-        WHERE strftime('%m', data) = ? AND strftime('%Y', data) = ?
-        GROUP BY tipo
-    """, conn, params=[f"{mes:02d}", str(ano)])
+    try:
+        df_movimentacoes = pd.read_sql("""
+            SELECT tipo, SUM(valor) as total 
+            FROM caixa 
+            WHERE strftime('%m', data) = %s AND strftime('%Y', data) = %s
+            GROUP BY tipo
+        """, conn, params=[f"{mes:02d}", str(ano)])
 
-    entrada_total = df_movimentacoes[df_movimentacoes["tipo"] == "Entrada"]["total"].sum() if "Entrada" in df_movimentacoes["tipo"].values else 0
-    saida_total = df_movimentacoes[df_movimentacoes["tipo"] == "Saída"]["total"].sum() if "Saída" in df_movimentacoes["tipo"].values else 0
+        entrada_total = df_movimentacoes[df_movimentacoes["tipo"] == "Entrada"]["total"].sum() if "Entrada" in \
+                                                                                                  df_movimentacoes[
+                                                                                                      "tipo"].values else 0
+        saida_total = df_movimentacoes[df_movimentacoes["tipo"] == "Saída"]["total"].sum() if "Saída" in \
+                                                                                              df_movimentacoes[
+                                                                                                  "tipo"].values else 0
 
-    st.write(f"**📥 Total de Entradas:** R$ {entrada_total:.2f}")
-    st.write(f"**📤 Total de Saídas:** R$ {saida_total:.2f}")
+        st.write(f"**📥 Total de Entradas:** R$ {entrada_total:.2f}")
+        st.write(f"**📤 Total de Saídas:** R$ {saida_total:.2f}")
 
-    if st.button("📌 Confirmar Fechamento"):
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO fechamento (entrada, saida, ano, mes) VALUES (?, ?, ?, ?)",
-                       (entrada_total, saida_total, ano, mes))
-        conn.commit()
-        st.success("✅ Fechamento do mês registrado com sucesso!")
-        st.rerun()
+        if st.button("📌 Confirmar Fechamento"):
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO fechamento (entrada, saida, ano, mes) VALUES (%s, %s, %s, %s)",
+                           (entrada_total, saida_total, ano, mes))
+            conn.commit()
+            st.success("✅ Fechamento do mês registrado com sucesso!")
+            st.rerun()
+
+    except Exception as e:
+        print(f"Erro ao executar consulta: {e}")
+
+
+    c.close()
+    conn.close()
 
 
 

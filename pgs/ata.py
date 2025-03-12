@@ -1,12 +1,15 @@
 import pandas as pd
 import streamlit as st
 
+from pgs.db import conect_db
 
-def criar_ata(conn):
+
+def criar_ata():
+    conn, c = conect_db()
     st.subheader("📌 Criar Ata de Reunião")
 
     # Buscar reuniões existentes
-    reunioes = pd.read_sql("SELECT ID, Nome, Data FROM reunioes", conn)
+    reunioes = pd.read_sql("SELECT ID, nome, data FROM reunioes", conn)
     if reunioes.empty:
         st.warning("⚠️ Nenhuma reunião cadastrada. Cadastre uma reunião primeiro.")
         return
@@ -14,13 +17,13 @@ def criar_ata(conn):
     # Selecionar reunião para vincular à ata
     reuniao_selecionada = st.selectbox(
         "Selecione a Reunião",
-        reunioes.apply(lambda row: f"{row['Nome']} - {row['Data']}", axis=1),
+        reunioes.apply(lambda row: f"{row['nome']} - {row['data']}", axis=1),
         key="select_reuniao_ata"
     )
 
     # Obter ID da reunião selecionada
     reuniao_id = int(reunioes.loc[
-        reunioes.apply(lambda row: f"{row['Nome']} - {row['Data']}", axis=1) == reuniao_selecionada, "ID"
+        reunioes.apply(lambda row: f"{row['nome']} - {row['data']}", axis=1) == reuniao_selecionada, "id"
     ].values[0])
     titulo = st.text_input("Título da Ata")
     descricao = st.text_area("Descrição da Ata")
@@ -28,23 +31,26 @@ def criar_ata(conn):
     if st.button("💾 Salvar Ata", key="salvar_ata"):
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO ata (reuniao_id, titulo, descricao) VALUES (?, ?, ?)",
+            "INSERT INTO ata (reuniao_id, titulo, descricao) VALUES (%s, %s, %s)",
             (reuniao_id, titulo, descricao)
         )
         conn.commit()
         st.success("✅ Ata registrada com sucesso!")
         st.rerun()
+    c.close()
+    conn.close()
 
 
-def gerenciar_atas(conn):
+def gerenciar_atas():
+    conn, c = conect_db()
     st.subheader("📌 Gerenciar Atas")
 
     # Buscar atas cadastradas
     atas = pd.read_sql("""
-        SELECT a.id, a.titulo, a.descricao, r.Nome as reuniao, r.Data
+        SELECT a.id, a.titulo, a.descricao, r.nome as reuniao, r.data
         FROM ata a
         JOIN reunioes r ON a.reuniao_id = r.ID
-        ORDER BY r.Data DESC
+        ORDER BY r.data DESC
     """, conn)
 
     if atas.empty:
@@ -54,13 +60,13 @@ def gerenciar_atas(conn):
     # Selecionar ata para edição/exclusão
     ata_selecionada = st.selectbox(
         "Selecione a Ata para Gerenciar",
-        atas.apply(lambda row: f"{row['titulo']} ({row['reuniao']} - {row['Data']})", axis=1),
+        atas.apply(lambda row: f"{row['titulo']} ({row['reuniao']} - {row['data']})", axis=1),
         key="select_ata"
     )
 
     # Obter ID da ata
     ata_id = atas.loc[
-        atas.apply(lambda row: f"{row['titulo']} ({row['reuniao']} - {row['Data']})", axis=1) == ata_selecionada, "id"
+        atas.apply(lambda row: f"{row['titulo']} ({row['reuniao']} - {row['data']})", axis=1) == ata_selecionada, "id"
     ].values[0]
 
     # Campos editáveis
@@ -71,7 +77,7 @@ def gerenciar_atas(conn):
     with col1:
         if st.button("💾 Atualizar Ata", key="atualizar_ata"):
             cursor = conn.cursor()
-            cursor.execute("UPDATE ata SET titulo = ?, descricao = ? WHERE id = ?",
+            cursor.execute("UPDATE ata SET titulo = %s, descricao = %s WHERE id = %s",
                            (novo_titulo, nova_descricao, ata_id))
             conn.commit()
             st.success("✅ Ata atualizada com sucesso!")
@@ -80,17 +86,20 @@ def gerenciar_atas(conn):
     with col2:
         if st.button("❌ Excluir Ata", key="deletar_ata"):
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM ata WHERE id = ?", (ata_id,))
+            cursor.execute("DELETE FROM ata WHERE id = %s", (ata_id,))
             conn.commit()
             st.warning("⚠️ Ata excluída!")
             st.rerun()
+    c.close()
+    conn.close()
 
 
-def criar_ato(conn):
+def criar_ato():
+    conn, c = conect_db()
     st.subheader("📌 Criar Ato para uma Unidade")
 
     # Buscar reuniões
-    reunioes = pd.read_sql("SELECT ID, Nome, Data FROM reunioes", conn)
+    reunioes = pd.read_sql("SELECT ID, nome, data FROM reunioes", conn)
     if reunioes.empty:
         st.warning("⚠️ Nenhuma reunião cadastrada.")
         return
@@ -98,17 +107,17 @@ def criar_ato(conn):
     # Selecionar reunião
     reuniao_selecionada = st.selectbox(
         "Selecione a Reunião",
-        reunioes.apply(lambda row: f"{row['Nome']} - {row['Data']}", axis=1),
+        reunioes.apply(lambda row: f"{row['nome']} - {row['data']}", axis=1),
         key="select_reuniao_ato"
     )
 
     # Obter ID da reunião
-    reuniao_id = reunioes.loc[
-        reunioes.apply(lambda row: f"{row['Nome']} - {row['Data']}", axis=1) == reuniao_selecionada, "ID"
-    ].values[0]
+    reuniao_id = int(reunioes.loc[
+        reunioes.apply(lambda row: f"{row['nome']} - {row['data']}", axis=1) == reuniao_selecionada, "id"
+    ].values[0])
 
     # Buscar atas dessa reunião
-    atas = pd.read_sql("SELECT id, titulo FROM ata WHERE reuniao_id = ?", conn, params=[reuniao_id])
+    atas = pd.read_sql("SELECT id, titulo FROM ata WHERE reuniao_id = %s", conn, params=[reuniao_id])
 
     if atas.empty:
         st.warning("⚠️ Nenhuma ata vinculada a essa reunião. Cadastre uma ata primeiro.")
@@ -120,10 +129,10 @@ def criar_ato(conn):
 
     # Buscar unidades
     query = """
-        SELECT u.ID, u.Nome 
+        SELECT u.ID, u.nome 
         FROM membros m
         JOIN unidades u ON m.id_unidade = u.ID
-        WHERE m.codigo_sgc = ?
+        WHERE m.codigo_sgc = %s
     """
     unidade_usuario = pd.read_sql(query, conn, params=[st.session_state.sgc])
 
@@ -131,7 +140,7 @@ def criar_ato(conn):
         st.error("⚠️ Você não tem uma unidade vinculada. Contate o administrador.")
     else:
         unidade_id = int(unidade_usuario["ID"].values[0])
-        unidade_nome = unidade_usuario["Nome"].values[0]
+        unidade_nome = unidade_usuario["nome"].values[0]
 
         # Exibir a unidade fixa, sem permitir alteração
         st.write(f"📌 Unidade: **{unidade_nome}**")
@@ -142,24 +151,27 @@ def criar_ato(conn):
     if st.button("💾 Salvar Ato", key="salvar_ato"):
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO ato (ata_id, titulo, descricao, unidade_id) VALUES (?, ?, ?, ?)",
+            "INSERT INTO ato (ata_id, titulo, descricao, unidade_id) VALUES (%s, %s, %s, %s)",
             (ata_id, titulo_ato, descricao_ato, unidade_id)
         )
         conn.commit()
         st.success("✅ Ato registrado com sucesso!")
         st.rerun()
+    c.close()
+    conn.close()
 
 
-def gerenciar_atos(conn):
+def gerenciar_atos():
+    conn, c = conect_db()
     st.subheader("📌 Gerenciar Atos")
 
     # Buscar atos cadastrados
     atos = pd.read_sql("""
-        SELECT a.id, a.titulo, a.descricao, ata.titulo as ata_titulo, u.Nome as unidade
+        SELECT a.id, a.titulo, a.descricao, ata.titulo as ata_titulo, u.nome as unidade
         FROM ato a
         JOIN ata ON a.ata_id = ata.id
         JOIN unidades u ON a.unidade_id = u.ID
-        ORDER BY ata.titulo, u.Nome
+        ORDER BY ata.titulo, u.nome
     """, conn)
 
     if atos.empty:
@@ -186,7 +198,7 @@ def gerenciar_atos(conn):
     with col1:
         if st.button("💾 Atualizar Ato", key="atualizar_ato"):
             cursor = conn.cursor()
-            cursor.execute("UPDATE ato SET titulo = ?, descricao = ? WHERE id = ?", (novo_titulo, nova_descricao, ato_id))
+            cursor.execute("UPDATE ato SET titulo = %s, descricao = %s WHERE id = %s", (novo_titulo, nova_descricao, ato_id))
             conn.commit()
             st.success("✅ Ato atualizado!")
             st.rerun()
@@ -194,28 +206,29 @@ def gerenciar_atos(conn):
     with col2:
         if st.button("❌ Excluir Ato", key="deletar_ato"):
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM ato WHERE id = ?", (ato_id,))
+            cursor.execute("DELETE FROM ato WHERE id = %s", (ato_id,))
             conn.commit()
             st.warning("⚠️ Ato excluído!")
             st.rerun()
+    c.close()
+    conn.close()
 
-
-def atas_e_atos(conn):
+def atas_e_atos():
     st.subheader("📌 Gerenciamento de Atas e Atos")
 
     with st.expander("📜 Criar e Gerenciar Atas"):
         with st.container():
             col1, col2 = st.columns(2)
             with col1:
-                criar_ata(conn)
+                criar_ata()
             with col2:
-                gerenciar_atas(conn)
+                gerenciar_atas()
 
     with st.expander("📑 Criar e Gerenciar Atos"):
         with st.container():
             col1, col2 = st.columns(2)
             with col1:
-                criar_ato(conn)
+                criar_ato()
             with col2:
-                gerenciar_atos(conn)
+                gerenciar_atos()
 

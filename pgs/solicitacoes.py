@@ -1,8 +1,10 @@
 import pandas as pd
 import streamlit as st
 
+from pgs.db import conect_db
 
-def solicitar_item(conn):
+def solicitar_item():
+    conn, c = conect_db()
     st.subheader("📌 Solicitação de Materiais")
 
     # Buscar itens disponíveis no patrimônio
@@ -14,9 +16,9 @@ def solicitar_item(conn):
     # Criar dicionário para armazenar as seleções
     solicitacoes = {}
     reunioes = pd.read_sql("SELECT * FROM reunioes", conn)
-    reuniao = st.selectbox("Reunião", reunioes['Nome'] if not reunioes.empty else [], key='Reunião_material')
+    reuniao = st.selectbox("Reunião", reunioes['nome'] if not reunioes.empty else [], key='Reunião_material')
     if reuniao:
-        reuniao_id = int(reunioes[reunioes['Nome'] == reuniao]['ID'].values[0])
+        reuniao_id = int(reunioes[reunioes['nome'] == reuniao]['id'].values[0])
         # colunas
         # Criar interface para solicitar materiais
         for _, row in itens.iterrows():
@@ -38,19 +40,22 @@ def solicitar_item(conn):
             for item_id, qtd in solicitacoes.items():
                 cursor.execute("""
                     INSERT INTO solicitacoes (codigo_sgc, id_item, quantidade, reuniao_id, data_solicitacao, status)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    VALUES (%s,%s,%s,%s,%s,%s)
                 """, (st.session_state.sgc, item_id, qtd, reuniao_id, data_solicitacao, 'Pendente'))
 
             conn.commit()
             st.success(f"✅ Solicitação de materiais enviada!")
             st.rerun()
+    c.close()
+    conn.close()
 
 
-def gerenciar_solicitacoes(conn):
+def gerenciar_solicitacoes():
+    conn, c = conect_db()
     st.subheader("📌 Gerenciar Solicitações Internas")
 
     df_solicitacoes = pd.read_sql("""
-        SELECT s.id, m.Nome AS membro, p.nome AS item, s.quantidade, s.data_solicitacao, s.status
+        SELECT s.id, m.nome AS membro, p.nome AS item, s.quantidade, s.data_solicitacao, s.status
         FROM solicitacoes s
         JOIN membros m ON s.codigo_sgc = m.codigo_sgc
         JOIN patrimonio p ON s.id_item = p.id
@@ -94,16 +99,16 @@ def gerenciar_solicitacoes(conn):
         # Atualizar status da solicitação
         cursor.execute("""
             UPDATE solicitacoes
-            SET status = ?
-            WHERE id = ?
+            SET status = %s
+            WHERE id = %s
         """, (novo_status, sol_id))
 
         # Se aprovado, diminuir estoque no patrimônio
         if novo_status == "Aprovado":
             cursor.execute("""
                 UPDATE patrimonio
-                SET quantidade = quantidade - ?
-                WHERE nome = ?
+                SET quantidade = quantidade - %s
+                WHERE nome = %s
             """, (sol_info["quantidade"], sol_info["item"]))
 
         conn.commit()
@@ -112,24 +117,30 @@ def gerenciar_solicitacoes(conn):
 
     if col2.button("❌ Excluir Solicitação", key=f"delete_{sol_id}"):
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM solicitacoes WHERE id = ?", (sol_id,))
+        cursor.execute("DELETE FROM solicitacoes WHERE id = %s", (sol_id,))
         conn.commit()
         st.warning("⚠️ Solicitação excluída!")
         st.rerun()
+    c.close()
+    conn.close()
 
 
 # Função para atualizar o status no banco de dados
-def atualizar_status(conn, codigo_sgc, reuniao_id, novo_status):
-    cursor = conn.cursor()
+def atualizar_status(codigo_sgc, reuniao_id, novo_status):
+    conn, cursor = conect_db()
     cursor.execute("""
         UPDATE solicitacoes
-        SET status = ?
-        WHERE codigo_sgc = ? AND reuniao_id = ?
+        SET status = %s
+        WHERE codigo_sgc = %s AND reuniao_id = %s
     """, (novo_status, codigo_sgc, reuniao_id))
     conn.commit()
+    cursor.close()
+    conn.close()
+
 
 # Função card para exibir o conteúdo formatado e alterar o status
-def card(conn, title, content, codigo_sgc, reuniao_id, status_atual, color='white'):
+def card(title, content, codigo_sgc, reuniao_id, status_atual, color='white'):
+    conn, c = conect_db()
     """Exibe um card no estilo Trello e permite alterar o status do pedido.
 
     Arguments:
@@ -170,9 +181,12 @@ def card(conn, title, content, codigo_sgc, reuniao_id, status_atual, color='whit
             st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
+    c.close()
+    conn.close()
 
 
-def gerenciar_solicitacoes_internas(conn):
+def gerenciar_solicitacoes_internas():
+    conn, c = conect_db()
     st.subheader("📌 Gerenciar Solicitações Internas")
 
     # Buscar todas as datas de solicitações únicas
@@ -184,27 +198,27 @@ def gerenciar_solicitacoes_internas(conn):
 
     # Seleção da data
     reunioes = pd.read_sql("SELECT * FROM reunioes", conn)
-    reuniao = st.selectbox("Reunião", reunioes['Nome'] if not reunioes.empty else [], key='Reunião_material_gerencia')
+    reuniao = st.selectbox("Reunião", reunioes['nome'] if not reunioes.empty else [], key='Reunião_material_gerencia')
     if reuniao:
-        reuniao_id = int(reunioes[reunioes['Nome'] == reuniao]['ID'].values[0])
+        reuniao_id = int(reunioes[reunioes['nome'] == reuniao]['ID'].values[0])
 
         # Buscar solicitações da data selecionada
         df_solicitacoes = pd.read_sql("""
             SELECT 
         s.id, 
         s.codigo_sgc, 
-        m.Nome AS membro_nome, 
+        m.nome AS membro_nome, 
         p.nome AS item_nome, 
         s.quantidade, 
         s.status, 
-        r.Nome AS reuniao_nome,
+        r.nome AS reuniao_nome,
         r.ID AS reuniao_id  -- Incluindo o ID da reunião
         FROM solicitacoes s
         JOIN membros m ON s.codigo_sgc = m.codigo_sgc
         JOIN patrimonio p ON s.id_item = p.id
         JOIN reunioes r ON s.reuniao_id = r.ID
-        WHERE s.reuniao_id = ?
-        ORDER BY s.status DESC, m.Nome
+        WHERE s.reuniao_id = %s
+        ORDER BY s.status DESC, m.nome
         """, conn, params=[reuniao_id])
 
         if df_solicitacoes.empty:
@@ -231,10 +245,12 @@ def gerenciar_solicitacoes_internas(conn):
                      reuniao_id=row['reuniao_id'],  # Alterado para utilizar reuniao_id
                      status_atual=row['status'],
                      color="lightblue")
+    c.close()
+    conn.close()
 
 
-def sol(conn):
+def sol():
     with st.expander("Interna"):
-        solicitar_item(conn)
+        solicitar_item()
     with st.expander("Gerenciar"):
-        gerenciar_solicitacoes_internas(conn)
+        gerenciar_solicitacoes_internas()

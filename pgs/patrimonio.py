@@ -1,8 +1,9 @@
 import pandas as pd
 import streamlit as st
+from pgs.db import conect_db
 
-
-def add_item(conn):
+def add_item():
+    conn, c = conect_db()
     st.subheader("➕ Adicionar Item ao Patrimônio")
 
     nome = st.text_input("Nome do Item")
@@ -14,15 +15,18 @@ def add_item(conn):
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO patrimonio (nome, quantidade, descricao, data_aquisicao)
-            VALUES (?, ?, ?, ?)
+            VALUES (%s,%s,%s,%s)
         """, (nome, quantidade, descricao, data_aquisicao))
 
         conn.commit()
         st.success(f"✅ Item '{nome}' adicionado com sucesso!")
         st.rerun()
+    c.close()
+    conn.close()
 
 
-def view_items(conn):
+def view_items():
+    conn, c = conect_db()
     st.subheader("📋 Itens no Patrimônio")
 
     df = pd.read_sql("SELECT * FROM patrimonio ORDER BY nome", conn)
@@ -31,9 +35,12 @@ def view_items(conn):
         st.info("📌 Nenhum item cadastrado no patrimônio.")
     else:
         st.dataframe(df)
+    c.close()
+    conn.close()
 
 
-def editar_remover_item(conn):
+def editar_remover_item():
+    conn, c = conect_db()
     st.subheader("✏️ Editar ou Remover Item do Patrimônio")
 
     # Buscar todos os itens cadastrados
@@ -61,12 +68,12 @@ def editar_remover_item(conn):
     col1, col2 = st.columns(2)
 
     # Botão para salvar alterações
-    if col1.button("💾 Salvar Alterações", key=f"salvar_{item_id}"):
+    if col1.button("💾 Salvar Alterações", key=f"salvar"):
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE patrimonio 
-            SET nome = ?, quantidade = ?, descricao = ?, data_aquisicao = ?
-            WHERE id = ?
+            SET nome = %s, quantidade = %s, descricao = %s, data_aquisicao = %s
+            WHERE id = %s
         """, (novo_nome, nova_quantidade, nova_descricao, nova_data_aquisicao, item_id))
 
         conn.commit()
@@ -74,21 +81,23 @@ def editar_remover_item(conn):
         st.rerun()
 
     # Botão para excluir item
-    if col2.button("🗑️ Excluir Item", key=f"deletar_{item_id}"):
+    if col2.button("🗑️ Excluir Item", key=f"deletar"):
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM patrimonio WHERE id = ?", (item_id,))
+        cursor.execute("DELETE FROM patrimonio WHERE id = %s", (item_id,))
         conn.commit()
 
         st.warning(f"⚠️ Item '{item_info['nome']}' foi removido do patrimônio.")
         st.rerun()
+    c.close()
+    conn.close()
 
 
-def gerenciar_patrimonio(conn):
+def gerenciar_patrimonio():
     st.title("🏛️ Gestão de Patrimônio")
 
     with st.expander("Adicionar"):
-        add_item(conn)
+        add_item()
     with st.expander("Visualizar"):
-        view_items(conn)
+        view_items()
     with st.expander("Editar"):
-        editar_remover_item(conn)
+        editar_remover_item()

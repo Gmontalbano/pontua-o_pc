@@ -1,8 +1,10 @@
 import pandas as pd
 import streamlit as st
+from pgs.db import conect_db
 
 
-def mostrar_classes_usuario(conn, codigo_sgc):
+def mostrar_classes_usuario(codigo_sgc):
+    conn, c = conect_db()
     st.subheader("📌 Classes do Usuário")
 
     # Verifica se o código SGC foi passado
@@ -15,7 +17,7 @@ def mostrar_classes_usuario(conn, codigo_sgc):
         SELECT c.nome, c.codigo 
         FROM classe c
         JOIN user_classes uc ON c.codigo = uc.codigo_classe
-        WHERE uc.codigo_sgc = ?
+        WHERE uc.codigo_sgc = %s
     """
 
     df_classes = pd.read_sql(query, conn, params=[codigo_sgc])
@@ -25,13 +27,16 @@ def mostrar_classes_usuario(conn, codigo_sgc):
         st.info("📌 Este usuário não possui classes cadastradas.")
     else:
         st.dataframe(df_classes)
+    c.close()
+    conn.close()
 
 
-def gerenciar_classes_usuario(conn):
+def gerenciar_classes_usuario():
+    conn, cursor = conect_db()
     st.subheader("📌 Gerenciar Classes do Usuário")
 
     # Buscar usuários disponíveis
-    usuarios = pd.read_sql("SELECT codigo_sgc, Nome FROM membros", conn)
+    usuarios = pd.read_sql("SELECT codigo_sgc, nome FROM membros", conn)
 
     if usuarios.empty:
         st.warning("⚠️ Nenhum usuário encontrado.")
@@ -40,13 +45,13 @@ def gerenciar_classes_usuario(conn):
     # Seleção do usuário (com `key` único para evitar duplicação)
     usuario_selecionado = st.selectbox(
         "Selecione um Usuário",
-        usuarios["codigo_sgc"] + " - " + usuarios["Nome"],
+        usuarios["codigo_sgc"] + " - " + usuarios["nome"],
         index=0,
         key="selectbox_usuario_classes"  # 🔹 Identificador único para evitar erro
     )
 
     # Obter o código SGC real do usuário selecionado
-    codigo_sgc = usuarios.loc[usuarios["codigo_sgc"] + " - " + usuarios["Nome"] == usuario_selecionado, "codigo_sgc"].values[0]
+    codigo_sgc = usuarios.loc[usuarios["codigo_sgc"] + " - " + usuarios["nome"] == usuario_selecionado, "codigo_sgc"].values[0]
 
     # Buscar todas as classes disponíveis
     classes = pd.read_sql("SELECT codigo, nome FROM classe", conn)
@@ -57,7 +62,7 @@ def gerenciar_classes_usuario(conn):
 
     # Buscar classes que o usuário já possui
     classes_usuario = pd.read_sql(
-        "SELECT codigo_classe FROM user_classes WHERE codigo_sgc = ?",
+        "SELECT codigo_classe FROM user_classes WHERE codigo_sgc = %s",
         conn, params=[codigo_sgc]
     )
 
@@ -94,13 +99,15 @@ def gerenciar_classes_usuario(conn):
         for codigo_classe, resposta in selecoes.items():
             if resposta == "Sim" and codigo_classe not in classes_usuario:
                 # Adicionar classe ao usuário
-                cursor.execute("INSERT INTO user_classes (codigo_sgc, codigo_classe) VALUES (?, ?)",
+                cursor.execute("INSERT INTO user_classes (codigo_sgc, codigo_classe) VALUES (%s, %s)",
                                (codigo_sgc, codigo_classe))
             elif resposta == "Não" and codigo_classe in classes_usuario:
                 # Remover classe do usuário
-                cursor.execute("DELETE FROM user_classes WHERE codigo_sgc = ? AND codigo_classe = ?",
+                cursor.execute("DELETE FROM user_classes WHERE codigo_sgc = %s AND codigo_classe = %s",
                                (codigo_sgc, codigo_classe))
 
         conn.commit()
         st.success("✅ Classes atualizadas com sucesso!")
         st.rerun()
+    cursor.close()
+    conn.close()
