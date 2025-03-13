@@ -1,36 +1,38 @@
 import psycopg2
 from psycopg2 import OperationalError
 import os
-import sys
-from configparser import ConfigParser
-
+from dotenv import load_dotenv
 
 
 def conect_db():
-    site_module_path = os.path.dirname(sys.executable)
-    # Verifica se o caminho contém 'Scripts' (Windows) ou 'bin' (Linux/Mac)
-    if 'Scripts' in site_module_path:
-        venv_name = os.path.basename(os.path.dirname(site_module_path))
-    elif 'bin' in site_module_path:
-        venv_name = os.path.basename(os.path.dirname(os.path.dirname(site_module_path)))
-    else:
-        venv_name = None  # Não foi possível determinar o nome do venv
-        print('No virtual environment folder found. Create a virtual environment.')
-    VENV_FOLDER = venv_name
+    load_dotenv()
+    DB_USER = os.getenv('DB_USER')
+    DB_PASSWORD = os.getenv('DB_PASSWORD')
+    DB_NAME = os.getenv('DB_NAME')
+    DB_HOST = os.getenv('DB_HOST')
+    DB_PORT = os.getenv('DB_PORT')
 
-    key = f"./{VENV_FOLDER}/keys.cfg"
-
-    parser = ConfigParser()
-    _ = parser.read(key)
-    db_url = parser.get('postgres', 'db_url')
+    # Debug: Verificar se as variáveis estão carregadas
+    print(f"Usuário: {DB_USER}")
+    print(f"Senha recebida: {'✅ DEFINIDA' if DB_PASSWORD else '❌ NÃO DEFINIDA'}")
+    print(f"Banco: {DB_NAME}")
+    print(f"Host: {DB_HOST}")
+    print(f"Porta: {DB_PORT}")
 
     try:
-        conn = psycopg2.connect(db_url)
+        conn = psycopg2.connect(
+            dbname=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            host=DB_HOST,
+            port=DB_PORT
+        )
         cursor = conn.cursor()
         return conn, cursor
     except OperationalError as e:
         print(f"Erro ao conectar ao banco de dados: {e}")
         return None, None
+
 
 
 def get_usuario(username, senha_hash):
