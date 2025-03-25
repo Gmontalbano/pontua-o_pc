@@ -1,0 +1,8 @@
+pandas~=2.2.3
+openpyxl
+pandas
+psycopg2
+psycopg2-binary
+streamlit~=1.42.2
+pillow~=11.1.0
+dotenv
