@@ -1,54 +1,93 @@
-import pandas as pd
+from sqlalchemy.orm import Session
+from sqlalchemy import insert, select, update, delete
 import streamlit as st
-from pgs.db import conect_db
+from pgs.db import engine, tables
+import pandas as pd
+
 
 def add_item():
-    conn, c = conect_db()
+
+    if not engine:
+        st.error("❌ Erro ao conectar ao banco de dados.")
+        return
+
+    patrimonio = tables.get("patrimonio")
+
+    if patrimonio is None:
+        st.error("❌ A tabela 'patrimonio' não foi encontrada no banco de dados.")
+        return
+
     st.subheader("➕ Adicionar Item ao Patrimônio")
 
+    # 🔹 Campos do formulário
     nome = st.text_input("Nome do Item")
     quantidade = st.number_input("Quantidade", min_value=1, value=1)
     descricao = st.text_area("Descrição (opcional)")
     data_aquisicao = st.date_input("Data de Aquisição")
 
+    # 🔹 Botão para adicionar item
     if st.button("Adicionar Item"):
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO patrimonio (nome, quantidade, descricao, data_aquisicao)
-            VALUES (%s,%s,%s,%s)
-        """, (nome, quantidade, descricao, data_aquisicao))
+        with Session(engine) as session:
+            stmt = insert(patrimonio).values(
+                nome=nome,
+                quantidade=quantidade,
+                descricao=descricao if descricao else None,  # Armazena None se descrição estiver vazia
+                data_aquisicao=data_aquisicao
+            )
+            session.execute(stmt)
+            session.commit()
 
-        conn.commit()
         st.success(f"✅ Item '{nome}' adicionado com sucesso!")
         st.rerun()
-    c.close()
-    conn.close()
 
 
 def view_items():
-    conn, c = conect_db()
+
+    if not engine:
+        st.error("❌ Erro ao conectar ao banco de dados.")
+        return
+
+    patrimonio = tables.get("patrimonio")
+
+    if patrimonio is None:
+        st.error("❌ A tabela 'patrimonio' não foi encontrada no banco de dados.")
+        return
+
     st.subheader("📋 Itens no Patrimônio")
 
-    df = pd.read_sql("SELECT * FROM patrimonio ORDER BY nome", conn)
+    with Session(engine) as session:
+        result = session.execute(select(patrimonio).order_by(patrimonio.c.nome)).fetchall()
 
-    if df.empty:
+    if not result:
         st.info("📌 Nenhum item cadastrado no patrimônio.")
     else:
+        df = pd.DataFrame(result, columns=patrimonio.c.keys())
         st.dataframe(df)
-    c.close()
-    conn.close()
 
 
 def editar_remover_item():
-    conn, c = conect_db()
+
+    if not engine:
+        st.error("❌ Erro ao conectar ao banco de dados.")
+        return
+
+    patrimonio = tables.get("patrimonio")
+
+    if patrimonio is None:
+        st.error("❌ A tabela 'patrimonio' não foi encontrada no banco de dados.")
+        return
+
     st.subheader("✏️ Editar ou Remover Item do Patrimônio")
 
     # Buscar todos os itens cadastrados
-    df = pd.read_sql("SELECT id, nome, quantidade, descricao, data_aquisicao FROM patrimonio", conn)
+    with Session(engine) as session:
+        result = session.execute(select(patrimonio)).fetchall()
 
-    if df.empty:
+    if not result:
         st.warning("⚠️ Nenhum item encontrado para edição ou remoção.")
         return
+
+    df = pd.DataFrame(result, columns=patrimonio.c.keys())
 
     # Criar dicionário {Nome (ID) -> ID}
     item_dict = {f"{row['nome']} (ID {row['id']})": row['id'] for _, row in df.iterrows()}
@@ -64,32 +103,32 @@ def editar_remover_item():
     nova_descricao = st.text_area("Descrição", item_info["descricao"])
     nova_data_aquisicao = st.date_input("Data de Aquisição", pd.to_datetime(item_info["data_aquisicao"]))
 
-    # Criar colunas para botões
     col1, col2 = st.columns(2)
 
     # Botão para salvar alterações
-    if col1.button("💾 Salvar Alterações", key=f"salvar"):
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE patrimonio 
-            SET nome = %s, quantidade = %s, descricao = %s, data_aquisicao = %s
-            WHERE id = %s
-        """, (novo_nome, nova_quantidade, nova_descricao, nova_data_aquisicao, item_id))
+    if col1.button("💾 Salvar Alterações", key=f"salvar_{item_id}"):
+        with Session(engine) as session:
+            stmt = update(patrimonio).where(patrimonio.c.id == item_id).values(
+                nome=novo_nome,
+                quantidade=nova_quantidade,
+                descricao=nova_descricao,
+                data_aquisicao=nova_data_aquisicao
+            )
+            session.execute(stmt)
+            session.commit()
 
-        conn.commit()
         st.success(f"✅ Item '{novo_nome}' atualizado com sucesso!")
         st.rerun()
 
     # Botão para excluir item
-    if col2.button("🗑️ Excluir Item", key=f"deletar"):
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM patrimonio WHERE id = %s", (item_id,))
-        conn.commit()
+    if col2.button("🗑️ Excluir Item", key=f"deletar_{item_id}"):
+        with Session(engine) as session:
+            stmt = delete(patrimonio).where(patrimonio.c.id == item_id)
+            session.execute(stmt)
+            session.commit()
 
         st.warning(f"⚠️ Item '{item_info['nome']}' foi removido do patrimônio.")
         st.rerun()
-    c.close()
-    conn.close()
 
 
 def gerenciar_patrimonio():

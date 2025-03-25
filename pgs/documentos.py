@@ -1,94 +1,156 @@
 import pandas as pd
 import streamlit as st
-
-from pgs.db import conect_db
+from sqlalchemy import create_engine, MetaData, select, insert, delete
+from sqlalchemy.orm import Session
+from pgs.db import get_db, engine, tables
 
 
 def listar_eventos():
-    conn, c = conect_db()
-    df = pd.read_sql("SELECT id, nome FROM evento", conn)
-    c.close()
-    conn.close()
-    return df
+    if not engine:
+        st.error("❌ Erro ao conectar ao banco de dados.")
+        return pd.DataFrame()
+
+    eventos = tables.get("evento")
+    if eventos is None:
+        st.error("❌ A tabela 'evento' não foi encontrada no banco de dados.")
+        return pd.DataFrame()
+
+    with Session(engine) as session:
+        eventos_query = session.execute(select(eventos.c.id, eventos.c.nome)).fetchall()
+
+    return pd.DataFrame(eventos_query, columns=["id", "nome"])
+
 
 
 def listar_documentos_evento(id_evento):
-    conn, c = conect_db()
-    df = pd.read_sql("SELECT id, nome_documento FROM evento_documentos WHERE id_evento = %s", conn,
-                       params=(id_evento,))
-    c.close()
-    conn.close()
-    return df
+    if not engine:
+        st.error("❌ Erro ao conectar ao banco de dados.")
+        return pd.DataFrame()
+
+    documentos = tables.get("evento_documentos")
+    if documentos is None:
+        st.error("❌ A tabela 'evento_documentos' não foi encontrada no banco de dados.")
+        return pd.DataFrame()
+
+    with Session(engine) as session:
+        documentos_query = session.execute(
+            select(documentos.c.id, documentos.c.nome_documento).where(documentos.c.id_evento == id_evento)
+        ).fetchall()
+
+    return pd.DataFrame(documentos_query, columns=["id", "nome_documento"])
 
 
 def registrar_entrega(codigo_sgc, id_evento, id_documento):
-    conn, c = conect_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO user_evento_documentos (codigo_sgc, id_evento, id_documento) 
-        VALUES (%s, %s, %s)""", (codigo_sgc, id_evento, id_documento))
-    conn.commit()
-    c.close()
-    conn.close()
+    if not engine:
+        st.error("❌ Erro ao conectar ao banco de dados.")
+        return
+
+    entregas = tables.get("user_evento_documentos")
+    if not entregas:
+        st.error("❌ A tabela 'user_evento_documentos' não foi encontrada no banco de dados.")
+        return
+
+    with Session(engine) as session:
+        session.execute(
+            insert(entregas).values(
+                codigo_sgc=codigo_sgc, id_evento=id_evento, id_documento=id_documento
+            )
+        )
+        session.commit()
+
+    st.success("✅ Entrega registrada com sucesso!")
+
 
 
 def listar_documentos_entregues(id_evento):
-    conn, c = conect_db()
-    cursor = conn.cursor()
-    df = pd.read_sql("""
-        SELECT u.id, u.codigo_sgc, m.Nome AS membro, d.nome_documento, u.data_entrega 
-        FROM user_evento_documentos u
-        JOIN membros m ON u.codigo_sgc = m.codigo_sgc
-        JOIN evento_documentos d ON u.id_documento = d.id
-        WHERE u.id_evento = %s
-    """, conn, params=(id_evento,))
-    c.close()
-    conn.close()
-    return df
+    if not engine:
+        st.error("❌ Erro ao conectar ao banco de dados.")
+        return pd.DataFrame()
+
+    entregas = tables.get("user_evento_documentos")
+    membros = tables.get("membros")
+    documentos = tables.get("evento_documentos")
+
+    if entregas is None or membros is None or documentos is None:
+        st.error("❌ Algumas tabelas necessárias não foram encontradas no banco de dados.")
+        return pd.DataFrame()
+
+    with Session(engine) as session:
+        entregas_query = session.execute(
+            select(
+                entregas.c.id, entregas.c.codigo_sgc, membros.c.nome,
+                documentos.c.nome_documento, entregas.c.data_entrega
+            )
+            .join(membros, entregas.c.codigo_sgc == membros.c.codigo_sgc)
+            .join(documentos, entregas.c.id_documento == documentos.c.id)
+            .where(entregas.c.id_evento == id_evento)
+        ).fetchall()
+
+    return pd.DataFrame(entregas_query, columns=["id", "codigo_sgc", "membro", "nome_documento", "data_entrega"])
+
 
 def excluir_entrega(id_registro):
-    conn, cursor = conect_db()
-    cursor.execute("DELETE FROM user_evento_documentos WHERE id = %s", (id_registro,))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    if not engine:
+        st.error("❌ Erro ao conectar ao banco de dados.")
+        return
+
+    entregas = tables.get("user_evento_documentos")
+    if not entregas:
+        st.error("❌ A tabela 'user_evento_documentos' não foi encontrada no banco de dados.")
+        return
+
+    with Session(engine) as session:
+        session.execute(delete(entregas).where(entregas.c.id == id_registro))
+        session.commit()
+
+    st.warning("⚠️ Registro excluído com sucesso!")
 
 
 def cadastrar_documento_evento():
-    conn, cursor = conect_db()
+    if not engine:
+        st.error("❌ Erro ao conectar ao banco de dados.")
+        return
+
+    eventos = tables.get("evento")
+    documentos = tables.get("evento_documentos")
+
+    if eventos is None or documentos is None:
+        st.error("❌ Algumas tabelas não foram encontradas no banco de dados.")
+        return
+
     st.subheader("📜 Cadastrar Documentos Necessários para Eventos")
 
-    # Buscar eventos disponíveis
-    eventos = pd.read_sql("SELECT id, nome FROM evento", conn)
+    with Session(engine) as session:
+        eventos_query = session.execute(select(eventos.c.id, eventos.c.nome)).fetchall()
 
-    if eventos.empty:
+    if not eventos_query:
         st.warning("Nenhum evento encontrado. Cadastre um evento antes de adicionar documentos.")
         return
 
-    # Selecionar evento
-    evento_nome = st.selectbox("Selecione o evento", eventos['nome'])
-    evento_id = int(eventos[eventos['nome'] == evento_nome]['id'].values[0])
+    eventos_opcoes = {str(e.id): e.nome for e in eventos_query}
+    evento_selecionado = st.selectbox("Selecione o evento", list(eventos_opcoes.values()))
+    evento_id = next(e for e in eventos_opcoes if eventos_opcoes[e] == evento_selecionado)
 
-    # Campo para inserir o nome do documento
     nome_documento = st.text_input("Nome do Documento")
 
     if st.button("Cadastrar Documento"):
         if nome_documento.strip():
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO evento_documentos (id_evento, nome_documento) 
-                VALUES (%s, %s)
-            """, (evento_id, nome_documento))
-            conn.commit()
-            st.success(f"Documento '{nome_documento}' cadastrado com sucesso para o evento '{evento_nome}'!")
+            with Session(engine) as session:
+                session.execute(
+                    insert(documentos).values(id_evento=evento_id, nome_documento=nome_documento)
+                )
+                session.commit()
+            st.success(f"Documento '{nome_documento}' cadastrado com sucesso para o evento '{evento_selecionado}'!")
         else:
             st.error("O nome do documento não pode estar vazio.")
-    cursor.close()
-    conn.close()
+
 
 
 def docs():
-    conn, cursor = conect_db()
+    if not engine:
+        st.error("❌ Erro ao conectar ao banco de dados.")
+        return
+
     st.title("📄 Gestão de Documentos de Eventos")
 
     cadastrar_documento_evento()
@@ -97,6 +159,11 @@ def docs():
 
     if eventos.empty:
         st.warning("Nenhum evento cadastrado.")
+        return
+    membros = tables.get("membros")
+    unidades = tables.get("unidades")
+    if membros is None or unidades is None:
+        st.error("❌ Algumas tabelas não foram encontradas no banco de dados.")
         return
 
     evento_selecionado = st.selectbox("Selecione um evento", eventos["nome"].tolist())
@@ -110,24 +177,25 @@ def docs():
         st.table(documentos)
 
     st.subheader("📤 Registrar Entrega de Documento")
-    membros = pd.read_sql("""
-            SELECT membros.nome, membros.codigo_sgc, unidades.nome as unidade 
-            FROM membros 
-            JOIN unidades ON membros.id_unidade = unidades.id
-        """, conn)
+    with Session(engine) as session:
+        membros_query = session.execute(
+            select(membros.c.nome, membros.c.codigo_sgc, unidades.c.nome)
+            .join(unidades, membros.c.id_unidade == unidades.c.id)
+        ).fetchall()
 
-    membro_dict = {f"{row['nome']} ({row['unidade']})": row["codigo_sgc"] for _, row in membros.iterrows()}
+    if not membros_query:
+        st.warning("Nenhum membro encontrado.")
+        return
+
+    membro_dict = {f"{row.nome} ({row[2]})": row.codigo_sgc for row in membros_query}
     membro_selecionado = st.selectbox("Selecione o membro:", list(membro_dict.keys()), key='membro')
-
     membro_id = membro_dict[membro_selecionado]
-    membro_info = membros[membros["codigo_sgc"] == membro_id].iloc[0]
 
-    documento_selecionado = st.selectbox("Selecione o documento", documentos["nome_documento"].tolist(), key='doc')
+    documento_selecionado = st.selectbox("Selecione o documento", documentos["nome_documento"].tolist())
 
     if st.button("Registrar Entrega"):
         id_documento = int(documentos.loc[documentos["nome_documento"] == documento_selecionado, "id"].values[0])
-        registrar_entrega(membro_info["codigo_sgc"], id_evento, id_documento)
-        st.success("Entrega registrada com sucesso!")
+        registrar_entrega(membro_id, id_evento, id_documento)
 
     st.subheader("📂 Documentos Entregues")
     entregues = listar_documentos_entregues(id_evento)
@@ -136,10 +204,8 @@ def docs():
         id_excluir = st.selectbox("Selecione um registro para excluir", entregues["id"].tolist())
         if st.button("Excluir Registro"):
             excluir_entrega(id_excluir)
-            st.success("Registro excluído com sucesso!")
             st.rerun()
     else:
         st.info("Nenhum documento entregue ainda.")
-    cursor.close()
-    conn.close()
+
 

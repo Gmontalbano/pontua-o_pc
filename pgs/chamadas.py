@@ -1,66 +1,66 @@
 import streamlit as st
 import pandas as pd
-
-from pgs.db import conect_db
+from sqlalchemy.orm import Session
+from sqlalchemy.sql import select, insert, update
+from sqlalchemy.exc import IntegrityError
+from pgs.db import get_db, engine, tables
 
 
 def registrar_chamada():
-    conn, c = conect_db()
-    st.subheader("Registrar Chamada")
 
-    # Buscar reuniões e unidades
-    reunioes = pd.read_sql("SELECT * FROM reunioes", conn)
-    unidades = pd.read_sql("SELECT ID, Nome FROM unidades", conn)
+    if not engine:
+        st.error("❌ Erro ao conectar ao banco de dados.")
+        return
 
-    reuniao = st.selectbox("Reunião", reunioes['nome'] if not reunioes.empty else [])
-    unidade_nome = st.selectbox("Unidade", unidades['nome'] if not unidades.empty else [])
+    reunioes = tables.get("reunioes")
+    unidades = tables.get("unidades")
+    membros = tables.get("membros")
+    chamadas = tables.get("chamadas")
+
+    if reunioes is None or unidades is None or membros is None or chamadas is None:
+        st.error("❌ Algumas tabelas não foram encontradas no banco de dados.")
+        return
+
+    with Session(engine) as session:
+        reunioes_df = pd.DataFrame(session.execute(select(reunioes)).fetchall(), columns=reunioes.columns.keys())
+        unidades_df = pd.DataFrame(session.execute(select(unidades)).fetchall(), columns=unidades.columns.keys())
+
+    reuniao = st.selectbox("Reunião", reunioes_df["nome"] if not reunioes_df.empty else [])
+    unidade_nome = st.selectbox("Unidade", unidades_df["nome"] if not unidades_df.empty else [])
 
     if reuniao and unidade_nome:
-        reuniao_id = int(reunioes[reunioes['nome'] == reuniao]['id'].values[0])
-        unidade_id = int(unidades[unidades['nome'] == unidade_nome]['id'].values[0])
+        reuniao_id = int(reunioes_df.loc[reunioes_df["nome"] == reuniao, "id"].values[0])
+        unidade_id = int(unidades_df.loc[unidades_df["nome"] == unidade_nome, "id"].values[0])
 
-        # Buscar membros da unidade correta, incluindo o cargo
-        membros_unidade = pd.read_sql(f"""
-            SELECT Nome, cargo FROM membros WHERE id_unidade = {unidade_id} ORDER BY cargo, Nome
-        """, conn)
+        with Session(engine) as session:
+            membros_unidade = pd.DataFrame(session.execute(
+                select(membros.c.nome, membros.c.cargo)
+                .where(membros.c.id_unidade == unidade_id)
+                .order_by(membros.c.cargo, membros.c.nome)
+            ).fetchall(), columns=["nome", "cargo"])
 
-        # Criar um dicionário para agrupar os membros pelo cargo
         membros_por_cargo = {}
         for _, row in membros_unidade.iterrows():
-            cargo = row["cargo"] if row["cargo"] else "Sem Cargo"  # Tratamento para cargos vazios
-            if cargo not in membros_por_cargo:
-                membros_por_cargo[cargo] = []
-            membros_por_cargo[cargo].append(row["nome"])
+            cargo = row["cargo"] if row["cargo"] else "Sem Cargo"
+            membros_por_cargo.setdefault(cargo, []).append(row["nome"])
 
         registros = []
 
-        # Exibir cada grupo de membros conforme o cargo
-        for cargo, membros in membros_por_cargo.items():
-            st.markdown(f"### {cargo}")  # Título para cada cargo
+        for cargo, membros_lista in membros_por_cargo.items():
+            st.markdown(f"### {cargo}")
 
-            for nome in membros:
+            for nome in membros_lista:
                 st.subheader(nome)
 
-                # 🔹 Buscar chamada existente para este membro, reunião e unidade
-                chamada_existente = pd.read_sql(f"""
-                    SELECT presenca, pontualidade, uniforme, modestia
-                    FROM chamadas
-                    WHERE reuniao_id = {reuniao_id} 
-                    AND id_unidade = {unidade_id} 
-                    AND membro = '{nome}'
-                """, conn)
+                with Session(engine) as session:
+                    chamada_existente = session.execute(
+                        select(chamadas.c.presenca, chamadas.c.pontualidade, chamadas.c.uniforme, chamadas.c.modestia)
+                        .where(chamadas.c.reuniao_id == reuniao_id)
+                        .where(chamadas.c.id_unidade == unidade_id)
+                        .where(chamadas.c.membro == nome)
+                    ).fetchone()
 
-                # 🔹 Preencher com valores já existentes ou padrão 0
-                if not chamada_existente.empty:
-                    presenca_valor = chamada_existente['presenca'].values[0]
-                    pontualidade_valor = chamada_existente['pontualidade'].values[0]
-                    uniforme_valor = chamada_existente['uniforme'].values[0]
-                    modestia_valor = chamada_existente['modestia'].values[0]
-                else:
-                    presenca_valor = 0
-                    pontualidade_valor = 0
-                    uniforme_valor = 0
-                    modestia_valor = 0
+                presenca_valor, pontualidade_valor, uniforme_valor, modestia_valor = chamada_existente or (0, 0, 0, 0)
 
                 col1, col2, col3, col4 = st.columns(4)
                 presenca_toggle = col1.toggle("Presença", value=presenca_valor == 10, key=f"presenca_{nome}")
@@ -75,58 +75,67 @@ def registrar_chamada():
                 registros.append((reuniao_id, unidade_id, nome, presenca, pontualidade, uniforme, modestia))
 
         if st.button("Salvar Chamada"):
-            for r in registros:
-                # Verifica se a chamada já existe
-                c.execute("""
-                    SELECT COUNT(*) FROM chamadas 
-                    WHERE Reuniao_ID = %s AND id_unidade = %s AND Membro = %s
-                """, (r[0], r[1], r[2]))
+            with Session(engine) as session:
+                for r in registros:
+                    chamada_existente = session.execute(
+                        select(chamadas.c.id)
+                        .where(chamadas.c.reuniao_id == r[0])
+                        .where(chamadas.c.id_unidade == r[1])
+                        .where(chamadas.c.membro == r[2])
+                    ).fetchone()
 
-                existe = c.fetchone()[0]
+                    if chamada_existente:
+                        stmt = update(chamadas).where(chamadas.c.id == chamada_existente[0]).values(
+                            presenca=r[3], pontualidade=r[4], uniforme=r[5], modestia=r[6]
+                        )
+                    else:
+                        stmt = insert(chamadas).values(
+                            reuniao_id=r[0], id_unidade=r[1], membro=r[2], presenca=r[3],
+                            pontualidade=r[4], uniforme=r[5], modestia=r[6]
+                        )
 
-                if existe:
-                    # Atualiza os dados existentes
-                    c.execute("""
-                        UPDATE chamadas 
-                        SET Presenca = %s, Pontualidade = %s, Uniforme = %s, Modestia = %s 
-                        WHERE Reuniao_ID = %s AND id_unidade = %s AND Membro = %s
-                    """, (r[3], r[4], r[5], r[6], r[0], r[1], r[2]))
-                else:
-                    # Insere um novo registro
-                    c.execute("""
-                        INSERT INTO chamadas (Reuniao_ID, id_unidade, Membro, Presenca, Pontualidade, Uniforme, Modestia) 
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    """, r)
+                    session.execute(stmt)
 
-            conn.commit()
-            st.success("Chamada registrada/atualizada com sucesso!")
-            st.rerun()
-    c.close()
-    conn.close()
+                session.commit()
+                st.success("✅ Chamada registrada/atualizada com sucesso!")
+                st.rerun()
 
 
 def visualizar_chamada():
-    conn, c = conect_db()
-    st.subheader("Chamadas Registradas")
-    chamadas = pd.read_sql(
-        """SELECT chamadas.ID, 
-       chamadas.Reuniao_ID, 
-       reunioes.Nome as Reuniao_Nome, 
-       chamadas.Membro, 
-       chamadas.id_unidade,
-       unidades.Nome as Unidade_Nome
-        FROM chamadas 
-        JOIN reunioes ON chamadas.Reuniao_ID = reunioes.ID
-        JOIN unidades ON chamadas.id_unidade = unidades.ID
-        """,
-        conn)
-    if not chamadas.empty:
-        st.dataframe(chamadas)
-    else:
-        st.write("Nenhuma chamada registrada ainda.")
-    c.close()
-    conn.close()
 
+    if not engine:
+        st.error("❌ Erro ao conectar ao banco de dados.")
+        return
+
+    chamadas = tables.get("chamadas")
+    reunioes = tables.get("reunioes")
+    unidades = tables.get("unidades")
+
+    if chamadas is None or reunioes is None or unidades is None:
+        st.error("❌ Algumas tabelas não foram encontradas no banco de dados.")
+        return
+
+    with Session(engine) as session:
+        chamadas_query = session.execute(
+            select(
+                chamadas.c.id,
+                chamadas.c.reuniao_id,
+                reunioes.c.nome.label("Reuniao_Nome"),
+                chamadas.c.membro,
+                chamadas.c.id_unidade,
+                unidades.c.nome.label("Unidade_Nome")
+            ).join(reunioes, chamadas.c.reuniao_id == reunioes.c.id)
+             .join(unidades, chamadas.c.id_unidade == unidades.c.id)
+        ).fetchall()
+
+        chamadas_df = pd.DataFrame(chamadas_query, columns=["ID", "Reuniao_ID", "Reuniao_Nome", "Membro", "id_unidade", "Unidade_Nome"])
+
+    st.subheader("📌 Chamadas Registradas")
+
+    if not chamadas_df.empty:
+        st.dataframe(chamadas_df)
+    else:
+        st.info("ℹ️ Nenhuma chamada registrada ainda.")
 
 
 

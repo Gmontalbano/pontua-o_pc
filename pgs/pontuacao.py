@@ -1,44 +1,68 @@
 import streamlit as st
 import pandas as pd
-
-from pgs.db import conect_db
+from sqlalchemy.orm import Session
+from sqlalchemy.sql import select
+from pgs.db import get_db, engine, tables
 
 
 def show_pontos():
-    conn, c = conect_db()
-    st.subheader("Pontuação por Unidade")
 
-    # Carregar dados corretamente
-    chamadas = pd.read_sql("""
-        SELECT 
-            chamadas.*, 
-            reunioes.nome AS Reuniao_Nome, 
-            reunioes.data::DATE AS Data, 
-            unidades.nome AS Unidade_Nome,
-            EXTRACT(YEAR FROM reunioes.data) AS Ano, 
-            EXTRACT(MONTH FROM reunioes.data) AS Mês
-        FROM chamadas
-        JOIN reunioes ON chamadas.reuniao_id = reunioes.id
-        JOIN unidades ON chamadas.id_unidade = unidades.id
-    """, conn)
+    if not engine:
+        st.error("❌ Erro ao conectar ao banco de dados.")
+        return
+
+    chamadas = tables.get("chamadas")
+    reunioes = tables.get("reunioes")
+    unidades = tables.get("unidades")
+
+    if chamadas is None or reunioes is None or unidades is None:
+        st.error("❌ Algumas tabelas não foram encontradas no banco de dados.")
+        return
+
+    with Session(engine) as session:
+        chamadas_query = session.execute(
+            select(
+                chamadas.c.id,
+                chamadas.c.reuniao_id,
+                reunioes.c.nome.label("Reuniao_Nome"),
+                reunioes.c.data.label("Data"),
+                unidades.c.nome.label("Unidade_Nome"),
+                chamadas.c.id_unidade,
+                chamadas.c.presenca,
+                chamadas.c.pontualidade,
+                chamadas.c.uniforme,
+                chamadas.c.modestia
+            ).join(reunioes, chamadas.c.reuniao_id == reunioes.c.id)
+             .join(unidades, chamadas.c.id_unidade == unidades.c.id)
+        ).fetchall()
+
+        df = pd.DataFrame(chamadas_query, columns=[
+            "ID", "Reuniao_ID", "Reuniao_Nome", "Data", "Unidade_Nome", "ID_Unidade",
+            "Presenca", "Pontualidade", "Uniforme", "Modestia"
+        ])
+
+    if df.empty:
+        st.info("ℹ️ Nenhuma chamada registrada ainda.")
+        return
+
+    df["Data"] = pd.to_datetime(df["Data"])
+    df["Ano"] = df["Data"].dt.year
+    df["Mes"] = df["Data"].dt.month
 
     # Criar ranking geral
-    ranking = chamadas.groupby('unidade_nome')[['presenca', 'pontualidade', 'uniforme', 'modestia']].sum()
-    ranking['Total Geral'] = ranking.sum(axis=1)
-    ranking = ranking.sort_values(by='Total Geral', ascending=False)
+    ranking = df.groupby("Unidade_Nome")[["Presenca", "Pontualidade", "Uniforme", "Modestia"]].sum()
+    ranking["Total_Geral"] = ranking.sum(axis=1)
+    ranking = ranking.sort_values(by="Total_Geral", ascending=False)
 
-    # Exibir ranking
-    st.subheader("Ranking Geral das Unidades")
+    st.subheader("📌 Ranking Geral das Unidades")
     st.dataframe(ranking)
 
     # Exibir relatórios por unidade
-    for unidade in chamadas['unidade_nome'].unique():
-        st.subheader(f"Unidade: {unidade}")
-        df_unidade = chamadas[chamadas['unidade_nome'] == unidade]
+    for unidade in df["Unidade_Nome"].unique():
+        st.subheader(f"📍 Unidade: {unidade}")
+        df_unidade = df[df["Unidade_Nome"] == unidade]
 
-        df_resumo = df_unidade.groupby('mês')[['presenca', 'pontualidade', 'uniforme', 'modestia']].sum().reset_index()
-        df_resumo['Total Geral'] = df_resumo[['presenca', 'pontualidade', 'uniforme', 'modestia']].sum(axis=1)
+        df_resumo = df_unidade.groupby("Mes")[["Presenca", "Pontualidade", "Uniforme", "Modestia"]].sum().reset_index()
+        df_resumo["Total_Geral"] = df_resumo[["Presenca", "Pontualidade", "Uniforme", "Modestia"]].sum(axis=1)
 
         st.dataframe(df_resumo)
-    c.close()
-    conn.close()
