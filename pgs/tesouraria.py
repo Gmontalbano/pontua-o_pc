@@ -265,7 +265,7 @@ def remover_inscricao():
     membros = tables.get("membros")
     inscricao_eventos = tables.get("inscricao_eventos")
 
-    if not evento or not membros or not inscricao_eventos:
+    if evento is None or membros is None or inscricao_eventos is None:
         st.error("❌ Algumas tabelas não foram encontradas no banco de dados.")
         return
 
@@ -273,7 +273,7 @@ def remover_inscricao():
 
     # Buscar eventos disponíveis
     with Session(engine) as session:
-        eventos_query = session.execute(evento.select()).fetchall()
+        eventos_query = session.execute(select(evento.c.id, evento.c.nome)).fetchall()
 
     eventos_df = pd.DataFrame(eventos_query, columns=["id", "nome"])
 
@@ -283,12 +283,12 @@ def remover_inscricao():
 
     # Selecionar evento
     evento_selecionado = st.selectbox("Selecione um Evento", eventos_df["nome"], key="remover_evento")
-    evento_id = eventos_df.loc[eventos_df["nome"] == evento_selecionado, "id"].values[0]
+    evento_id = str(eventos_df.loc[eventos_df["nome"] == evento_selecionado, "id"].values[0])
 
     # Buscar inscritos no evento
     with Session(engine) as session:
         inscritos_query = session.execute(
-            inscricao_eventos.select()
+            select(inscricao_eventos.c.codigo_sgc, membros.c.nome)  # Correção aqui
             .join(membros, membros.c.codigo_sgc == inscricao_eventos.c.codigo_sgc)
             .where(inscricao_eventos.c.id_evento == evento_id)
         ).fetchall()
@@ -682,8 +682,9 @@ def editar_evento():
 
     evento = tables.get("evento")
     inscricao_eventos = tables.get("inscricao_eventos")
+    evento_documentos = tables.get("evento_documentos")
 
-    if not evento or not inscricao_eventos:
+    if evento is None or inscricao_eventos is None:
         st.error("❌ As tabelas 'evento' ou 'inscricao_eventos' não foram encontradas no banco de dados.")
         return
 
@@ -724,6 +725,7 @@ def editar_evento():
     if col2.button("❌ Excluir Evento", key=f"delete_evento_{evento_id}"):
         with Session(engine) as session:
             # Deleta primeiro as inscrições relacionadas ao evento
+            session.execute(delete(evento_documentos).where(evento_documentos.c.id_evento == evento_id))
             session.execute(delete(inscricao_eventos).where(inscricao_eventos.c.id_evento == evento_id))
             session.execute(delete(evento).where(evento.c.id == evento_id))
             session.commit()

@@ -2,8 +2,7 @@ import streamlit as st
 import pandas as pd
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import select, insert, update
-from sqlalchemy.exc import IntegrityError
-from pgs.db import get_db, engine, tables
+from pgs.db import engine, tables
 
 
 def registrar_chamada():
@@ -25,7 +24,7 @@ def registrar_chamada():
         reunioes_df = pd.DataFrame(session.execute(select(reunioes)).fetchall(), columns=reunioes.columns.keys())
         unidades_df = pd.DataFrame(session.execute(select(unidades)).fetchall(), columns=unidades.columns.keys())
 
-    reuniao = st.selectbox("Reunião", reunioes_df["nome"] if not reunioes_df.empty else [])
+    reuniao = st.selectbox("Reunião", reunioes_df["nome"].tolist()[::-1] if not reunioes_df.empty else [])
     unidade_nome = st.selectbox("Unidade", unidades_df["nome"] if not unidades_df.empty else [])
 
     if reuniao and unidade_nome:
@@ -62,16 +61,32 @@ def registrar_chamada():
 
                 presenca_valor, pontualidade_valor, uniforme_valor, modestia_valor = chamada_existente or (0, 0, 0, 0)
 
-                col1, col2, col3, col4 = st.columns(4)
+                col1, col2, col3, col4, col5 = st.columns(5)
+
+                # 🔹 Toggle de Presença
                 presenca_toggle = col1.toggle("Presença", value=presenca_valor == 10, key=f"presenca_{nome}")
                 presenca = 10 if presenca_toggle else 0
-                pontualidade = col2.number_input('Pontualidade', min_value=0, max_value=10, step=5,
-                                                 value=pontualidade_valor, key=f"pontualidade_{nome}")
-                uniforme = col3.number_input('Uniforme', min_value=0, max_value=10, step=5,
-                                             value=uniforme_valor, key=f"uniforme_{nome}")
-                modestia = col4.number_input('Modéstia', min_value=0, max_value=10, step=5,
-                                             value=modestia_valor, key=f"modestia_{nome}")
 
+                # 🔹 Toggle de Justificada
+                justificada_toggle = col5.toggle("Justificada", key=f"justificada_{nome}")
+
+                # 🔹 Definir valores padrão
+                pontualidade, uniforme, modestia = 0, 0, 0
+
+                # 🔹 Se justificada, mantém presença 10 e zera os outros campos
+                if justificada_toggle:
+                    presenca = 5
+                    pontualidade, uniforme, modestia = 0, 0, 0
+                # 🔹 Se presença for ativada, permitir edição dos campos
+                elif presenca_toggle:
+                    pontualidade = col2.number_input('Pontualidade', min_value=0, max_value=10, step=5,
+                                                     value=10, key=f"pontualidade_{nome}")
+                    uniforme = col3.number_input('Uniforme', min_value=0, max_value=10, step=5,
+                                                 value=10, key=f"uniforme_{nome}")
+                    modestia = col4.number_input('Modéstia', min_value=0, max_value=10, step=5,
+                                                 value=10, key=f"modestia_{nome}")
+
+                # 🔹 Salvar os valores no registro
                 registros.append((reuniao_id, unidade_id, nome, presenca, pontualidade, uniforme, modestia))
 
         if st.button("Salvar Chamada"):

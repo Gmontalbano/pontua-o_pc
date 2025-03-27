@@ -21,20 +21,11 @@ from pgs.documentos import docs
 from pgs.extracao import aba_extracao
 
 # Configuração da página
-st.set_page_config(layout="wide")
+st.set_page_config(layout="wide", page_title="Pioneiros da Colina", page_icon='imgs/pc_logo.jpg',)
 
 # **Definição do tempo limite para logout automático**
 TIMEOUT_LOGOUT = 30  # Tempo em segundos
 
-# **Script para detectar fechamento da aba e enviar logout**
-close_script = """
-<script>
-    window.addEventListener("beforeunload", function (event) {
-        fetch('/logout', { method: 'POST' });
-    });
-</script>
-"""
-components.html(close_script, height=0)
 
 # **Função principal**
 def main():
@@ -138,31 +129,44 @@ def main():
                             if permissao in ['associado', 'admin']:
                                 gerenciar_classes_usuario()
                     elif menu[i] == "Tesouraria":
-                        with st.expander("Novo evento"):
-                            aba1 = st.selectbox("Escolha uma opção:", ['Evento', 'Mensalidade'])
+                        with st.expander("Novo"):
+                            aba1 = st.selectbox("Escolha uma opção:", ['Evento', 'Mensalidade'], key="Tesouraria_novo")
                             if aba1 == 'Evento':
                                 criar_eventos()
                             elif aba1 == 'Mensalidade':
                                 criar_mensalidades()
 
-                        with st.expander("Pagamentos"):
-                            aba2 = st.selectbox("Escolha uma opção:", ['Mensalidade', 'Evento', 'Débitos'])
-                            if aba2 == 'Mensalidade':
-                                editar_status_mensalidade()
-                            elif aba2 == 'Evento':
+                        with st.expander("Inscrição"):
+                            aba3 = st.selectbox("Escolha uma opção:", ['Evento', 'Mensalidade'], key="Tesouraria_Inscrição")
+                            if aba3 == 'Evento':
                                 inscrever_no_evento()
+                                remover_inscricao()
+
+                        with st.expander("Editar"):
+                            aba2 = st.selectbox("Escolha uma opção:", ['Evento', 'Mensalidade'], key="Tesouraria_editar")
+                            if aba2 == 'Evento':
+                                editar_evento()
+                            elif aba2 == 'Mensalidade':
+                                editar_mensalidade()
+
+                        with st.expander("Pagamentos"):
+                            aba4 = st.selectbox("Escolha uma opção:", ['Evento', 'Mensalidade', 'Débitos'], key="Tesouraria_pagamentos")
+                            if aba4 == 'Evento':
                                 editar_status_inscricao()
-                            elif aba2 == 'Débitos':
+                            elif aba4 == 'Mensalidade':
+                                editar_status_mensalidade()
+                            elif aba4 == 'Débitos':
                                 visualizar_debitos()
 
-                        with st.expander("Relatórios"):
-                            visualizar_relatorios()
-
                         with st.expander("Caixa"):
-                            gerenciar_caixa()
+                            aba5 = st.selectbox("Escolha uma opção:", ['Relatório', 'Gerenciar', 'Fechamento'], key="Tesouraria_Caixa")
+                            if aba5 == 'Relatório':
+                                visualizar_relatorios()
+                            elif aba5 == 'Gerenciar':
+                                gerenciar_caixa()
+                            elif aba5 == 'Fechamento':
+                                fechamento_mensal()
 
-                        with st.expander("Fechamento"):
-                            fechamento_mensal()
                     elif menu[i] == "Patrimonio":
                         gerenciar_patrimonio()
                     elif menu[i] == "Materiais":
