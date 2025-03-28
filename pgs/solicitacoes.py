@@ -23,7 +23,7 @@ def solicitar_item():
     st.subheader("📌 Solicitação de Materiais")
 
     with Session(engine) as session:
-        itens = session.execute(select(patrimonio)).mappings().all()  # ✅ Retorna dicionários
+        itens = session.execute(select(patrimonio)).mappings().all()
         reunioes = session.execute(select(reunioes_table)).mappings().all()
 
     if not itens:
@@ -34,27 +34,44 @@ def solicitar_item():
         st.warning("⚠️ Nenhuma reunião disponível.")
         return
 
-    # Criar opções para seleção de reunião
     reuniao_dict = {row["nome"]: row["id"] for row in reunioes}
     reuniao_selecionada = st.selectbox("Reunião", list(reuniao_dict.keys()), key='reuniao')
-
     if not reuniao_selecionada:
         return
 
     reuniao_id = reuniao_dict[reuniao_selecionada]
+    codigo_sgc = st.session_state.get("sgc", "Desconhecido")
 
-    # Criar interface para solicitar materiais
+    with Session(engine) as session:
+        solicitacoes_existentes = session.execute(
+            select(solicitacoes_table)
+            .where(solicitacoes_table.c.reuniao_id == reuniao_id)
+        ).mappings().all()
+
+    solicitacoes_usuario = {
+        s["id_item"]: s["quantidade"] for s in solicitacoes_existentes if s["codigo_sgc"] == codigo_sgc
+    }
+    solicitacoes_gerais = {}
+    for s in solicitacoes_existentes:
+        item_id = s["id_item"]
+        quantidade = s["quantidade"]
+
+        if item_id in solicitacoes_gerais:
+            solicitacoes_gerais[item_id] += quantidade
+        else:
+            solicitacoes_gerais[item_id] = quantidade
+
     solicitacoes = {}
     for item in itens:
         item_nome = item["nome"]
         item_id = item["id"]
-        max_qtd = item["quantidade"]
+        max_qtd = item["quantidade"] - solicitacoes_gerais.get(item_id, 0)
+        qtd_solicitada_anteriormente = solicitacoes_usuario.get(item_id, 0)
 
         qtd_solicitada = st.number_input(
-            f"{item_nome} (Disponível: {max_qtd})", min_value=0, max_value=max_qtd, step=1,
-            key=f"solicitacao_{item_id}"
+            f"{item_nome} (Disponível: {max_qtd})", min_value=0, max_value=max_qtd + qtd_solicitada_anteriormente, step=1,
+            key=f"solicitacao_{item_id}", value=qtd_solicitada_anteriormente
         )
-
         if qtd_solicitada > 0:
             solicitacoes[item_id] = qtd_solicitada
 
@@ -63,19 +80,31 @@ def solicitar_item():
     if st.button("💾 Enviar Solicitação", key="enviar_solicitacao"):
         with Session(engine) as session:
             for item_id, qtd in solicitacoes.items():
-                stmt = insert(solicitacoes_table).values(
-                    codigo_sgc=st.session_state.get("sgc", "Desconhecido"),
-                    id_item=item_id,
-                    quantidade=qtd,
-                    reuniao_id=reuniao_id,
-                    data_solicitacao=data_solicitacao,
-                    status="Pendente"
+                stmt = (
+                    update(solicitacoes_table)
+                    .where(solicitacoes_table.c.reuniao_id == reuniao_id)
+                    .where(solicitacoes_table.c.id_item == item_id)
+                    .where(solicitacoes_table.c.codigo_sgc == codigo_sgc)
+                    .values(quantidade=qtd, data_solicitacao=data_solicitacao)
                 )
-                session.execute(stmt)
+                result = session.execute(stmt)
+                if result.rowcount == 0:
+                    stmt = insert(solicitacoes_table).values(
+                        codigo_sgc=codigo_sgc,
+                        id_item=item_id,
+                        quantidade=qtd,
+                        reuniao_id=reuniao_id,
+                        data_solicitacao=data_solicitacao,
+                        status="Pendente"
+                    )
+                    session.execute(stmt)
 
             session.commit()
-            st.success("✅ Solicitação de materiais enviada!")
+            st.success("✅ Solicitação de materiais enviada/atualizada!")
             st.rerun()
+
+
+
 
 
 def gerenciar_solicitacoes():
@@ -173,12 +202,14 @@ def atualizar_status(codigo_sgc, reuniao_id, novo_status):
 
 
     if not engine:
-        raise Exception("Erro ao conectar ao banco de dados.")
+        st.error("❌ Erro ao conectar ao banco de dados.")
+        return
 
     solicitacoes_table = tables.get("solicitacoes")
 
-    if not solicitacoes_table:
-        raise Exception("Tabela 'solicitacoes' não encontrada no banco de dados.")
+    if solicitacoes_table is None:
+        st.error("❌ Algumas tabelas não foram encontradas no banco de dados.")
+        return
 
     with Session(engine) as session:
         stmt = update(solicitacoes_table).where(
