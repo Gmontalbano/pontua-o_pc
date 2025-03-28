@@ -6,7 +6,8 @@ from utils.hashes import hash_senha
 from pgs.db import engine, get_usuario
 
 # Importação dos módulos do sistema
-from pgs.cadastros import cadastro_unidade, cadastro_reuniao, delete_reuniao, cadastro_membro, delete_membro, gerenciar_usuarios
+from pgs.cadastros import (cadastro_unidade, cadastro_reuniao, cadastro_especialidade, cadastro_classe,
+                           delete_reuniao, cadastro_membro, delete_membro, gerenciar_usuarios)
 from pgs.chamadas import registrar_chamada, visualizar_chamada
 from pgs.pontuacao import show_pontos
 from pgs.especialidades import mostrar_especialidades_usuario, gerenciar_especialidades_usuario
@@ -79,10 +80,10 @@ def main():
 
             # **Definição das permissões de acesso**
             type_permission = {
-                'admin': ["Reuniões", "Membros", "Chamada", "Cadastro de unidade",
+                'admin': ["Reuniões", "Membros", "Chamada",
                           "Visualizar chamada", "Pontuação", "Usuário do sistema",
                           "Especialidades", "Classes", "Tesouraria", "Patrimonio",
-                          "Materiais", "Atas e Atos", "Documentos", "Relatorios"],
+                          "Materiais", "Atas e Atos", "Documentos", "Relatorios", "Novo"],
                 'especialidade': ["Reuniões", "Membros", "Chamada", "Visualizar chamada",
                                   "Pontuação", "Usuário do sistema", "Especialidades",
                                   "Classes", "Tesouraria", "Patrimonio", "Materiais",
@@ -103,8 +104,6 @@ def main():
                             cadastro_reuniao()
                         with st.expander("Editar"):
                             delete_reuniao()
-                    elif menu[i] == "Cadastro de unidade":
-                        cadastro_unidade()
                     elif menu[i] == "Membros":
                         with st.expander("Cadastrar"):
                             cadastro_membro()
@@ -177,6 +176,15 @@ def main():
                         docs()
                     elif menu[i] == "Relatorios":
                         aba_extracao()
+                    elif menu[i] == "Novo":
+                        aba6 = st.selectbox("Escolha uma opção:", ['Especialidade', 'Classe', 'Unidade'],
+                                            key="novo")
+                        if aba6 == 'Especialidade':
+                            cadastro_especialidade()
+                        elif aba6 == 'Classe':
+                            cadastro_classe()
+                        elif aba6 == 'Unidade':
+                            cadastro_unidade()
 
         else:
             st.sidebar.error("Usuário ou senha incorretos")

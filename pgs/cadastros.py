@@ -369,3 +369,110 @@ def gerenciar_usuarios():
 
             else:
                 st.warning("⚠️ Preencha todos os campos!")
+
+
+def cadastro_especialidade():
+    if not engine:
+        st.error("❌ Erro ao conectar ao banco de dados.")
+        return
+
+    especialidades = tables.get("especialidades")
+
+    with st.expander("➕ Nova especialidade"):
+        codigo_esp = st.text_input('Código da especialidade', 'XX-000')
+        nome_esp = st.text_input('Nome da especialidade')
+
+        if st.button("✅ Cadastrar Especialidade"):
+            if codigo_esp and nome_esp:
+                with Session(engine) as session:
+                    # Verificar se o código já existe
+                    existe = session.execute(
+                        select(especialidades.c.codigo).where(especialidades.c.codigo == codigo_esp)
+                    ).fetchone()
+
+                    if existe:
+                        st.warning(f"⚠️ Já existe uma especialidade com o código **{codigo_esp}**!")
+                    else:
+                        stmt = insert(especialidades).values(codigo=codigo_esp, nome=nome_esp)
+                        session.execute(stmt)
+                        session.commit()
+                        st.success("✅ Especialidade cadastrada com sucesso!")
+                        st.rerun()
+            else:
+                st.warning("⚠️ Preencha todos os campos.")
+
+    with st.expander("📂 Upload de Arquivo (.xlsx)"):
+        arquivo = st.file_uploader("Escolha um arquivo Excel", type=["xlsx"])
+
+        if arquivo is not None:
+            df = pd.read_excel(arquivo)
+
+            if not {'codigo', 'nome'}.issubset(df.columns):
+                st.error("❌ O arquivo deve ter as colunas: 'codigo' e 'nome'.")
+                return
+
+            st.dataframe(df)  # Mostrar prévia do arquivo
+
+            with Session(engine) as session:
+                # Obter todos os códigos já cadastrados no banco
+                codigos_existentes = set(row[0] for row in session.execute(select(especialidades.c.codigo)).fetchall())
+
+            # Separar os novos e os duplicados
+            df_novos = df[~df['codigo'].isin(codigos_existentes)]
+            df_duplicados = df[df['codigo'].isin(codigos_existentes)]
+            atualizar = False
+            if not df_novos.empty:
+                st.write(f"✅ {len(df_novos)} novas especialidades encontradas para cadastrar.")
+
+            if not df_duplicados.empty:
+                st.warning(f"⚠️ {len(df_duplicados)} especialidades já existem no banco.")
+                atualizar = st.checkbox("🔄 Atualizar especialidades existentes")
+
+            if st.button("📥 Salvar no Banco"):
+                with Session(engine) as session:
+                    if not df_novos.empty:
+                        session.execute(insert(especialidades), df_novos.to_dict(orient="records"))
+
+                    if atualizar and not df_duplicados.empty:
+                        for _, row in df_duplicados.iterrows():
+                            session.execute(
+                                update(especialidades)
+                                .where(especialidades.c.codigo == row['codigo'])
+                                .values(nome=row['nome'])
+                            )
+
+                    session.commit()
+
+                st.success("✅ Especialidades cadastradas/atualizadas com sucesso!")
+                st.rerun()
+
+
+def cadastro_classe():
+    if not engine:
+        st.error("❌ Erro ao conectar ao banco de dados.")
+        return
+
+    classe = tables.get("classe")
+
+    with st.expander("➕ Nova classe"):
+        codigo_cl = st.text_input('Código da classe')
+        nome_cl = st.text_input('Nome da classe')
+
+        if st.button("✅ Cadastrar Classe"):
+            if codigo_cl and nome_cl:
+                with Session(engine) as session:
+                    # Verificar se o código já existe
+                    existe = session.execute(
+                        select(classe.c.codigo).where(classe.c.codigo == codigo_cl)
+                    ).fetchone()
+
+                    if existe:
+                        st.warning(f"⚠️ Já existe uma classe com o código **{codigo_cl}**!")
+                    else:
+                        stmt = insert(classe).values(codigo=codigo_cl, nome=nome_cl)
+                        session.execute(stmt)
+                        session.commit()
+                        st.success("✅ Classe cadastrada com sucesso!")
+                        st.rerun()
+            else:
+                st.warning("⚠️ Preencha todos os campos.")
