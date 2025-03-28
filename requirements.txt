@@ -8,3 +8,5 @@ pillow~=11.1.0
 dotenv
 sqlalchemy
 flask
+seaborn
+matplotlib

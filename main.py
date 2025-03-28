@@ -88,9 +88,9 @@ def main():
                                   "Pontuação", "Usuário do sistema", "Especialidades",
                                   "Classes", "Tesouraria", "Patrimonio", "Materiais",
                                   "Atas e Atos", "Documentos", "Relatorios"],
-                'associado': ["Reuniões", "Membros", "Chamada", "Visualizar chamada",
+                'associado': ["Reuniões", "Membros", "Chamada",
                               "Pontuação", "Usuário do sistema"],
-                'equipe': ["Chamada", "Visualizar chamada", "Pontuação"],
+                'equipe': ["Chamada", "Pontuação"],
                 'conselho': ["Pontuação", "Especialidades", "Classes"]
             }
             menu = type_permission.get(permissao, [])
