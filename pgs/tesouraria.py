@@ -16,7 +16,7 @@ def criar_mensalidades():
     membros = tables.get("membros")
     user_mensalidades = tables.get("user_mensalidades")
 
-    if not mensalidades or not membros or not user_mensalidades:
+    if mensalidades is None or membros is None or user_mensalidades is None:
         st.error("❌ Algumas tabelas não foram encontradas no banco de dados.")
         return
 
@@ -683,6 +683,8 @@ def editar_evento():
     evento = tables.get("evento")
     inscricao_eventos = tables.get("inscricao_eventos")
     evento_documentos = tables.get("evento_documentos")
+    caixa = tables.get("caixa")
+
 
     if evento is None or inscricao_eventos is None:
         st.error("❌ As tabelas 'evento' ou 'inscricao_eventos' não foram encontradas no banco de dados.")
@@ -724,14 +726,27 @@ def editar_evento():
     # **Excluir Evento**
     if col2.button("❌ Excluir Evento", key=f"delete_evento_{evento_id}"):
         with Session(engine) as session:
-            # Deleta primeiro as inscrições relacionadas ao evento
-            session.execute(delete(evento_documentos).where(evento_documentos.c.id_evento == evento_id))
-            session.execute(delete(inscricao_eventos).where(inscricao_eventos.c.id_evento == evento_id))
-            session.execute(delete(evento).where(evento.c.id == evento_id))
-            session.commit()
+            try:
+                # Verifica se há registros na tabela 'caixa' que impedem a exclusão
+                caixa_vinculado = session.execute(
+                    select(caixa.c.id).where(caixa.c.id_evento == evento_id)
+                ).fetchone()
 
-        st.warning(f"⚠️ Evento '{evento_selecionado}' e todas as inscrições foram removidos!")
-        st.rerun()
+                if caixa_vinculado:
+                    st.error("❌ Não é possível excluir este evento porque há registros na tabela 'caixa'.")
+                else:
+                    # Deleta primeiro as inscrições relacionadas ao evento
+                    session.execute(delete(evento_documentos).where(evento_documentos.c.id_evento == evento_id))
+                    session.execute(delete(inscricao_eventos).where(inscricao_eventos.c.id_evento == evento_id))
+                    session.execute(delete(evento).where(evento.c.id == evento_id))
+                    session.commit()
+                    st.warning(f"⚠️ Evento '{evento_selecionado}' e todas as inscrições foram removidos!")
+                    st.rerun()
+            except Exception as e:
+                session.rollback()
+                st.error(f"❌ Erro ao excluir o evento: {str(e)}")
+
+
 
 
 def editar_mensalidade():
@@ -742,7 +757,7 @@ def editar_mensalidade():
 
     mensalidades = tables.get("mensalidades")
 
-    if not mensalidades:
+    if mensalidades is None:
         st.error("❌ A tabela 'mensalidades' não foi encontrada no banco de dados.")
         return
 

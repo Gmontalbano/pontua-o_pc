@@ -136,8 +136,6 @@ def main():
                                 criar_mensalidades()
 
                         with st.expander("Inscrição"):
-                            aba3 = st.selectbox("Escolha uma opção:", ['Evento', 'Mensalidade'], key="Tesouraria_Inscrição")
-                            if aba3 == 'Evento':
                                 inscrever_no_evento()
                                 remover_inscricao()
 
