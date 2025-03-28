@@ -2,3 +2,5 @@
 ./bkp/
 ./.idea
 ./.idea/
+./.venv
+./.venv/
