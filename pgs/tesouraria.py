@@ -352,7 +352,10 @@ def visualizar_relatorios():
         )
 
     st.subheader("📆 Visão Geral por Ano")
-    st.dataframe(df_ano if not df_ano.empty else st.info("📌 Nenhum dado encontrado."))
+    if df_ano.empty:
+        st.info("📌 Nenhum dado encontrado.")
+    else:
+        st.dataframe(df_ano)
 
     # 🔹 Visão Geral por Mês
     with Session(engine) as session:
