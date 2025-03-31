@@ -3,8 +3,6 @@ import pandas as pd
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import select
 from pgs.db import engine, tables
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 
 def show_pontos():
@@ -70,16 +68,6 @@ def show_pontos():
     if len(top_3) > 2:
         col3.metric(label=f"🥉 {top_3.iloc[2, 0]}", value=top_3.iloc[2, -1])
 
-    # 📊 Gráfico opcional para exibir outras unidades
-    if len(ranking) > 3:
-        st.markdown("### 📌 Outras Unidades:")
-        fig, ax = plt.subplots(figsize=(8, 4))
-        sns.barplot(x=ranking.iloc[3:]["Total_Geral"], y=ranking.iloc[3:].index, palette="Blues_r", ax=ax)
-        ax.set_xlabel("Pontuação Total")
-        ax.set_ylabel("Unidade")
-        st.pyplot(fig)
-
-    # Exibir relatórios por unidade
     for unidade in df["Unidade_Nome"].unique():
         df_unidade = df[df["Unidade_Nome"] == unidade]
         total_presenca_unidade = df_unidade["Presenca"].sum()
