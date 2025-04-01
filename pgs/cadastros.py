@@ -175,8 +175,8 @@ def cadastro_membro():
     nome = st.text_input("Nome do Membro")
     unidade_nome = st.selectbox("Unidade", list(unidade_opcoes.keys()), key='unidade_nome')
     codigo_sgc = st.text_input("Código SGC")  # Campo para inserir o código SGC
-    cargo = st.selectbox("Cargo", ['Conselheiro(a)', 'Desbravador(a)', 'Diretor(a) Associado(a)',
-                                   'Secretário(a)', 'Instrutor', 'Apoio', 'Tesoureiro(a)'], key="Cargo")
+    cargo = st.selectbox("Cargo", ['Conselheiro', 'Desbravador', 'Diretor Associado',
+                                   'Secretário', 'Instrutor', 'Apoio', 'Tesoureiro'], key="Cargo")
 
     if st.button("Cadastrar Membro"):
         if nome.strip() and unidade_nome and codigo_sgc.strip():
@@ -233,8 +233,8 @@ def delete_membro():
         # Se `cargo` for None, define como "Selecione um cargo"
         cargo_atual = membro_info["cargo"] if membro_info["cargo"] is not None else "Selecione um cargo"
         cargos_disponiveis = [
-            "Selecione um cargo", "Conselheiro(a)", "Desbravador(a)", "Diretor(a) Associado(a)",
-            "Secretário(a)", "Instrutor", "Apoio", "Tesoureiro(a)"
+            "Selecione um cargo", "Conselheiro", "Desbravador", "Diretor Associado",
+            "Secretário", "Instrutor", "Apoio", "Tesoureiro"
         ]
         novo_cargo = st.selectbox("Cargo", cargos_disponiveis,
                                   index=cargos_disponiveis.index(cargo_atual) if cargo_atual in cargos_disponiveis else 0)

@@ -48,9 +48,9 @@ def criar_mensalidades():
                     # 🚀 Confirma a inserção no banco antes de buscar membros
                     session.flush()
 
-                    # Buscar todos os membros com cargo "Desbravador(a)"
+                    # Buscar todos os membros com cargo "Desbravador"
                     membros_query = session.execute(
-                        select(membros.c.codigo_sgc).where(membros.c.cargo == "Desbravador(a)")
+                        select(membros.c.codigo_sgc).where(membros.c.cargo == "Desbravador")
                     ).fetchall()
 
                     if not membros_query:
@@ -539,7 +539,7 @@ def editar_status_mensalidade():
         result = session.execute(
             select(membros.c.codigo_sgc, membros.c.nome)
             .join(user_mensalidades, membros.c.codigo_sgc == user_mensalidades.c.codigo_sgc)
-            .where(membros.c.cargo == "Desbravador(a)")
+            .where(membros.c.cargo == "Desbravador")
             .distinct()
             .order_by(membros.c.nome)
         ).fetchall()
