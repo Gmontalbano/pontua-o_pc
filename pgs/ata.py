@@ -31,7 +31,7 @@ def criar_ata():
     reuniao_id = next(r for r in reuniao_opcoes if reuniao_opcoes[r] == reuniao_selecionada)
 
     titulo = st.text_input("Título da Ata")
-    descricao = st.text_area("Descrição da Ata")
+    descricao = st.text_area("Descrição da Ata", key='nova_descr_ata')
 
     if st.button("💾 Salvar Ata", key="salvar_ata"):
         with Session(engine) as session:
@@ -72,7 +72,7 @@ def gerenciar_atas():
 
     ata_info = next(a for a in atas_query if str(a.id) == ata_id)
     novo_titulo = st.text_input("Título", ata_info.titulo)
-    nova_descricao = st.text_area("Descrição", ata_info.descricao)
+    nova_descricao = st.text_area("Descrição", ata_info.descricao, key='edit_descr_area')
 
     col1, col2 = st.columns(2)
     with col1:
@@ -115,7 +115,7 @@ def criar_ato():
             select(unidades.c.id, unidades.c.nome)
             .join(membros, membros.c.id_unidade == unidades.c.id)  # ✅ Faz o JOIN corretamente via id_unidade
             .where(membros.c.codigo_sgc == st.session_state.sgc)  # ✅ Filtra pelo código SGC do usuário logado
-        ).fetchone
+        ).fetchone()
 
     if not atas_query:
         st.warning("⚠️ Nenhuma ata cadastrada.")

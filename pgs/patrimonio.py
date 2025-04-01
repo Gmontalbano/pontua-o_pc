@@ -106,7 +106,7 @@ def editar_remover_item():
     col1, col2 = st.columns(2)
 
     # Botão para salvar alterações
-    if col1.button("💾 Salvar Alterações", key=f"salvar_{item_id}"):
+    if col1.button("💾 Salvar Alterações", key=f"salvar_alt_patrimonio_{item_id}"):
         with Session(engine) as session:
             stmt = update(patrimonio).where(patrimonio.c.id == item_id).values(
                 nome=novo_nome,

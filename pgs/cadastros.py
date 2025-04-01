@@ -80,7 +80,7 @@ def delete_reuniao():
             col1, col2 = st.columns(2)
 
             # Botão para salvar alterações
-            if col1.button("💾 Salvar Alterações"):
+            if col1.button("💾 Salvar Alterações", key='salvar_reuniao'):
                 try:
                     with Session(engine) as session:
                         stmt = (
@@ -321,7 +321,7 @@ def gerenciar_usuarios():
         permissao = st.selectbox("Permissão", ["equipe", "associado", "conselho", "admin"],
                                  index=["equipe", "associado", "conselho", "admin"].index(permissao_atual))
 
-        if col1.button("💾 Salvar Alterações", key=f"salvar_{usuario_id}"):
+        if col1.button("💾 Salvar Alterações", key=f"salvar_alt_usuario_{usuario_id}"):
             with Session(engine) as session:
                 stmt = update(usuarios).where(usuarios.c.id == usuario_id).values(
                     login=login, permissao=permissao
