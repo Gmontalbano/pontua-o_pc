@@ -28,37 +28,51 @@ def criar_mensalidades():
 
     if st.button("💾 Criar Mensalidades do Ano"):
         with Session(engine) as session:
-            # Criar mensalidades para os 12 meses do ano selecionado
-            for mes in range(1, 13):
-                result = session.execute(
-                    insert(mensalidades)
-                    .values(valor=valor, ano=ano, mes=mes)
-                    .returning(mensalidades.c.id)
-                )
-                id_mensalidade = result.scalar()
-                st.success(f"Mensalidades criadas")
+            try:
+                # Criar mensalidades para os 12 meses do ano selecionado
+                for mes in range(1, 13):
+                    result = session.execute(
+                        insert(mensalidades)
+                        .values(valor=valor, ano=ano, mes=mes)
+                        .returning(mensalidades.c.id)
+                    )
+                    id_mensalidade = result.scalar()
 
-                # 🚀 Confirma a inserção no banco antes de buscar membros
+                    if not id_mensalidade:
+                        st.error(f"❌ Erro ao criar mensalidade para {mes}/{ano}. ID nulo.")
+                        session.rollback()
+                        continue  # Pula para o próximo mês
+
+                    st.success(f"✅ Mensalidade criada {mes}/{ano} - ID: {id_mensalidade}")
+
+                    # 🚀 Confirma a inserção no banco antes de buscar membros
+                    session.flush()
+
+                    # Buscar todos os membros com cargo "Desbravador(a)"
+                    membros_query = session.execute(
+                        select(membros.c.codigo_sgc).where(membros.c.cargo == "Desbravador(a)")
+                    ).fetchall()
+
+                    if not membros_query:
+                        st.warning(f"⚠️ Nenhum membro encontrado para {mes}/{ano}.")
+                        continue  # Pula para o próximo mês
+
+                    # Criar mensalidade para cada membro
+                    session.execute(
+                        insert(user_mensalidades).values([
+                            {"id_mensalidade": id_mensalidade, "codigo_sgc": membro[0], "status": "Pendente"}
+                            for membro in membros_query
+                        ])
+                    )
+
+                    st.success(f"✅ Mensalidades atribuídas para {mes}/{ano}.")
+
+                # Confirma todas as operações no final
                 session.commit()
 
-                # Buscar todos os membros com cargo "Desbravador(a)"
-                membros_query = session.execute(
-                    select(membros.c.codigo_sgc).where(membros.c.cargo == "Desbravador(a)")
-                ).fetchall()
-
-                # Criar mensalidade para cada membro
-                session.execute(
-                    insert(user_mensalidades).values([
-                        {"id_mensalidade": id_mensalidade, "codigo_sgc": membro[0], "status": "Pendente"}
-                        for membro in membros_query
-                    ])
-                )
-
-                st.success(f"Mensalidades Atribuidas")
-
-            session.commit()
-
-        st.success("✅ Mensalidades criadas para os 12 meses e atribuídas aos desbravadores!")
+            except Exception as e:
+                session.rollback()
+                st.error(f"⚠️ Erro ao criar mensalidades: {e}")
 
 
 def criar_eventos():
