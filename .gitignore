@@ -6,5 +6,5 @@
 ./.venv/
 ./.devcontainer
 .devcontainer
-dockerfile
+Dockerfile
 *.env
