@@ -377,7 +377,10 @@ def visualizar_relatorios():
         df_mes = df_mes[["Mês/Ano", "Total Entradas", "Total Saídas"]]
 
     st.subheader("📅 Visão Geral por Mês")
-    st.dataframe(df_mes if not df_mes.empty else st.info("📌 Nenhum dado encontrado."))
+    if df_mes.empty:
+        st.info("📌 Nenhum dado encontrado.")
+    else:
+        st.dataframe(df_mes)
 
     # 🔹 Relatório por Evento
     st.subheader("🎯 Relatório por Evento")
