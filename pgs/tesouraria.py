@@ -36,7 +36,11 @@ def criar_mensalidades():
                     .returning(mensalidades.c.id)
                 )
                 id_mensalidade = result.scalar()
-                st.write(id_mensalidade)
+                st.success(f"Mensalidades criadas")
+
+                # 🚀 Confirma a inserção no banco antes de buscar membros
+                session.commit()
+
                 # Buscar todos os membros com cargo "Desbravador(a)"
                 membros_query = session.execute(
                     select(membros.c.codigo_sgc).where(membros.c.cargo == "Desbravador(a)")
@@ -44,10 +48,13 @@ def criar_mensalidades():
 
                 # Criar mensalidade para cada membro
                 session.execute(
-                    insert(user_mensalidades),
-                    [{"id_mensalidade": id_mensalidade, "codigo_sgc": membro[0], "status": "Pendente"} for membro in
-                     membros_query]
+                    insert(user_mensalidades).values([
+                        {"id_mensalidade": id_mensalidade, "codigo_sgc": membro[0], "status": "Pendente"}
+                        for membro in membros_query
+                    ])
                 )
+
+                st.success(f"Mensalidades Atribuidas")
 
             session.commit()
 
