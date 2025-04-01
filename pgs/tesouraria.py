@@ -36,7 +36,7 @@ def criar_mensalidades():
                     .returning(mensalidades.c.id)
                 )
                 id_mensalidade = result.scalar()
-
+                st.write(id_mensalidade)
                 # Buscar todos os membros com cargo "Desbravador(a)"
                 membros_query = session.execute(
                     select(membros.c.codigo_sgc).where(membros.c.cargo == "Desbravador(a)")
@@ -690,7 +690,6 @@ def editar_evento():
     inscricao_eventos = tables.get("inscricao_eventos")
     evento_documentos = tables.get("evento_documentos")
     caixa = tables.get("caixa")
-
 
     if evento is None or inscricao_eventos is None:
         st.error("❌ As tabelas 'evento' ou 'inscricao_eventos' não foram encontradas no banco de dados.")
