@@ -143,6 +143,7 @@ def cadastro_unidade():
                 session.commit()
 
             st.success("✅ Unidade cadastrada com sucesso!")
+            st.rerun()
         except Exception as e:
             st.error(f"❌ Erro ao cadastrar unidade: {e}")
 
@@ -239,17 +240,25 @@ def delete_membro():
         novo_cargo = st.selectbox("Cargo", cargos_disponiveis,
                                   index=cargos_disponiveis.index(cargo_atual) if cargo_atual in cargos_disponiveis else 0)
 
-        unidades_disponiveis = df_membros["unidade"].unique().tolist()
-        nova_unidade = st.selectbox("Unidade", unidades_disponiveis, index=unidades_disponiveis.index(membro_info["unidade"]))
+        with Session(engine) as session:
+            result = session.execute(select(unidades.c.id, unidades.c.nome)).fetchall()
+
+        unidade_opcoes = {row[1]: row[0] for row in result} if result else {}
+
+        # Garante que a unidade do membro está na lista para evitar erro
+        if membro_info["unidade"] in unidade_opcoes:
+            index = list(unidade_opcoes.keys()).index(membro_info["unidade"])
+        else:
+            index = 0  # Define um índice padrão se não encontrar
+
+        nova_unidade = st.selectbox("Unidade", unidade_opcoes, index=index, key='nova_unidade')
 
         col1, col2 = st.columns(2)
 
         # **Salvar Alterações**
         if col1.button("💾 Salvar Alterações", key='Alterar'):
             with Session(engine) as session:
-                nova_unidade_id = session.execute(
-                    select(unidades.c.id).where(unidades.c.nome == nova_unidade)
-                ).scalar()
+                nova_unidade_id = unidade_opcoes[nova_unidade]
 
                 stmt = update(membros).where(membros.c.id == membro_id).values(
                     nome=novo_nome, codigo_sgc=novo_codigo_sgc, id_unidade=nova_unidade_id, cargo=novo_cargo

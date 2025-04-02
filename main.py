@@ -56,6 +56,26 @@ def main():
     img.image(image, caption='Mais que um clube, uma família')
     title_text.title("Pioneiros da Colina")
 
+    st.markdown(
+        """
+        <style>
+            .footer {
+                position: fixed;
+                bottom: 0;
+                width: 100%;
+                text-align: rigth;
+                padding: 5px;
+                font-size: 12px;
+                color: #6c757d;
+            }
+        </style>
+        <div class="footer">
+            📌 Versão 1.1.11
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
     st.sidebar.title("Login Section")
 
     username = st.sidebar.text_input("User Name")
