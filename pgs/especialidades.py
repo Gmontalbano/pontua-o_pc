@@ -1,120 +1,144 @@
 import pandas as pd
 import streamlit as st
-
-from pgs.db import conect_db
+from sqlalchemy.orm import Session
+from sqlalchemy import select, delete, insert
+from pgs.db import get_db, engine, tables
 
 
 def mostrar_especialidades_usuario(codigo_sgc):
-    conn, c = conect_db()
-    st.subheader("📌 Especialidades do Usuário")
 
-    # Verifica se o código SGC foi passado
-    if not codigo_sgc:
-        st.warning("⚠️ Nenhum código SGC fornecido no payload.")
+    if not engine:
+        st.error("❌ Erro ao conectar ao banco de dados.")
         return
 
-    # Query para buscar especialidades vinculadas ao usuário
-    query = """
-            SELECT e.nome, e.codigo 
-        FROM especialidades e
-        JOIN user_especialidades eu ON e.codigo = eu.codigo_especialidade
-        WHERE eu.codigo_sgc = %s
-        """
+    especialidades = tables.get("especialidades")
+    user_especialidades = tables.get("user_especialidades")
 
-    df_especialidades = pd.read_sql(query, conn, params=[codigo_sgc])
+    if especialidades is None or user_especialidades is None:
+        st.error("❌ Algumas tabelas não foram encontradas no banco de dados.")
+        return
 
-    # Exibir os dados
-    if df_especialidades.empty:
-        st.info("📌 Este usuário não possui especialidades cadastradas.")
-    else:
+    with Session(engine) as session:
+        query = session.execute(
+            select(
+                especialidades.c.nome,
+                especialidades.c.codigo
+            ).join(user_especialidades, especialidades.c.codigo == user_especialidades.c.codigo_especialidade)
+             .where(user_especialidades.c.codigo_sgc == codigo_sgc)
+        ).fetchall()
+
+        df_especialidades = pd.DataFrame(query, columns=["Nome", "Código"])
+
+    st.subheader("📌 Especialidades do Usuário")
+
+    if not df_especialidades.empty:
         st.dataframe(df_especialidades)
-    c.close()
-    conn.close()
+    else:
+        st.info("ℹ️ Este usuário não possui especialidades cadastradas.")
 
 
 def gerenciar_especialidades_usuario():
-    conn, cursor = conect_db()
-    st.subheader("📌 Gerenciar Especialidades do Usuário")
+    """Gerencia as especialidades de um usuário, garantindo transações seguras."""
 
-    # Buscar usuários disponíveis
-    usuarios = pd.read_sql("SELECT codigo_sgc, nome FROM membros", conn)
-
-    if usuarios.empty:
-        st.warning("⚠️ Nenhum usuário encontrado.")
+    if not engine:
+        st.error("❌ Erro ao conectar ao banco de dados.")
         return
 
-    # Seleção do usuário
-    usuario_selecionado = st.selectbox("Selecione um Usuário",
-                                       usuarios["codigo_sgc"] + " - " + usuarios["nome"], index=0)
+    membros = tables.get("membros")
+    especialidades = tables.get("especialidades")
+    user_especialidades = tables.get("user_especialidades")
 
-    # Obter o código SGC real do usuário selecionado
-    codigo_sgc = usuarios.loc[usuarios["codigo_sgc"] + " - " + usuarios["nome"] == usuario_selecionado, "codigo_sgc"].values[0]
-
-    # Buscar todas as especialidades disponíveis
-    especialidades = pd.read_sql("SELECT codigo, nome FROM especialidades", conn)
-
-    if especialidades.empty:
-        st.warning("⚠️ Nenhuma especialidade encontrada.")
+    if membros is None or especialidades is None or user_especialidades is None:
+        st.error("❌ Algumas tabelas não foram encontradas no banco de dados.")
         return
 
-    # Buscar especialidades que o usuário já possui
-    especialidades_usuario = pd.read_sql(
-        "SELECT codigo_especialidade FROM user_especialidades WHERE codigo_sgc = %s",
-        conn, params=[codigo_sgc]
-    )
+    with Session(engine) as session:
+        # Buscar usuários disponíveis
+        usuarios_query = session.execute(select(membros.c.codigo_sgc, membros.c.nome)).fetchall()
+        usuarios_df = pd.DataFrame(usuarios_query, columns=["codigo_sgc", "nome"])
 
-    # Garantir que a lista de especialidades do usuário esteja no formato correto
-    especialidades_usuario = set(str(cod) for cod in especialidades_usuario["codigo_especialidade"].tolist())
+        if usuarios_df.empty:
+            st.warning("⚠️ Nenhum usuário encontrado.")
+            return
 
-    # Criar dicionário para armazenar novas seleções
-    selecoes = {}
-    col1, col2, col3 = st.columns(3)
-    c = [col1, col2, col3]
-    i = 0
+        # Seleção do usuário
+        usuario_selecionado = st.selectbox(
+            "Selecione um Usuário",
+            usuarios_df["codigo_sgc"] + " - " + usuarios_df["nome"],
+            index=0
+        )
 
-    especialidades["prefixo"] = especialidades["codigo"].str[:2]  # Pega as duas letras iniciais
-    especialidades["numero"] = especialidades["codigo"].str[3:].astype(
-        int)  # Pega os três números finais e converte para int
+        # Obter o código SGC real do usuário selecionado
+        codigo_sgc = usuarios_df.loc[
+            usuarios_df["codigo_sgc"] + " - " + usuarios_df["nome"] == usuario_selecionado, "codigo_sgc"
+        ].values[0]
 
-    # Ordenar pelo prefixo (XX) e depois pelo número (YYY)
-    especialidades = especialidades.sort_values(by=["prefixo", "numero"]).drop(
-        columns=["prefixo", "numero"])  # Remover colunas temporárias
+        # Buscar todas as especialidades disponíveis
+        especialidades_query = session.execute(select(especialidades.c.codigo, especialidades.c.nome)).fetchall()
+        especialidades_df = pd.DataFrame(especialidades_query, columns=["codigo", "nome"])
 
-    # Criar `st.radio()` para cada especialidade
-    for _, row in especialidades.iterrows():
-        with c[i]:  # Coluna I
-            nome_especialidade = row["nome"]
-            codigo_especialidade = str(row["codigo"])  # Converte para string
+        if especialidades_df.empty:
+            st.warning("⚠️ Nenhuma especialidade encontrada.")
+            return
 
-            # Verificar se o usuário já possui a especialidade
-            selecionado = "Não" if codigo_especialidade in especialidades_usuario else "Sim"
+        # Buscar especialidades que o usuário já possui
+        especialidades_usuario_query = session.execute(
+            select(user_especialidades.c.codigo_especialidade).where(user_especialidades.c.codigo_sgc == codigo_sgc)
+        ).fetchall()
 
-            selecoes[codigo_especialidade] = st.radio(
-                f"{nome_especialidade}",
-                ["Sim", "Não"],
-                index=["Não", "Sim"].index(selecionado),
-                key=f"especialidade_{codigo_especialidade}"  # 🔹 Adicionado `key` único
-            )
-            i += 1
-            if i > 2:
-                i = 0
+        especialidades_usuario = set(str(cod[0]) for cod in especialidades_usuario_query)
 
-    # Atualizar banco de dados ao clicar no botão
-    if st.button("💾 Salvar Alterações", key='save'):
-        cursor = conn.cursor()
+        # Criar dicionário para armazenar novas seleções
+        selecoes = {}
+        col1, col2, col3 = st.columns(3)
+        c = [col1, col2, col3]
+        i = 0
 
-        for codigo_especialidade, resposta in selecoes.items():
-            if resposta == "Sim" and codigo_especialidade not in especialidades_usuario:
-                # Adicionar especialidade ao usuário
-                cursor.execute("INSERT INTO user_especialidades (codigo_sgc, codigo_especialidade) VALUES (%s, %s)",
-                               (codigo_sgc, codigo_especialidade))
-            elif resposta == "Não" and codigo_especialidade in especialidades_usuario:
-                # Remover especialidade do usuário
-                cursor.execute("DELETE FROM user_especialidades WHERE codigo_sgc = %s AND codigo_especialidade = %s",
-                               (codigo_sgc, codigo_especialidade))
+        # Ordenar especialidades por prefixo e número
+        especialidades_df["prefixo"] = especialidades_df["codigo"].str[:2]
+        especialidades_df["numero"] = especialidades_df["codigo"].str[3:].astype(int)
+        especialidades_df = especialidades_df.sort_values(by=["prefixo", "numero"]).drop(columns=["prefixo", "numero"])
 
-        conn.commit()
-        st.success("✅ Especialidades atualizadas com sucesso!")
-        st.rerun()
-    cursor.close()
-    conn.close()
+        # Criar opções de seleção
+        for _, row in especialidades_df.iterrows():
+            with c[i]:
+                nome_especialidade = row["nome"]
+                codigo_especialidade = str(row["codigo"])
+
+                # Verificar se o usuário já possui a especialidade
+                selecionado = "Não" if codigo_especialidade in especialidades_usuario else "Sim"
+
+                selecoes[codigo_especialidade] = st.radio(
+                    f"{nome_especialidade}",
+                    ["Sim", "Não"],
+                    index=["Não", "Sim"].index(selecionado),
+                    key=f"especialidade_{codigo_especialidade}"
+                )
+                i += 1
+                if i > 2:
+                    i = 0
+
+        # Atualizar banco de dados ao clicar no botão
+        if st.button("💾 Salvar Alterações", key='save'):
+            try:
+                # Adicionar ou remover especialidades
+                for codigo_especialidade, resposta in selecoes.items():
+                    if resposta == "Sim" and codigo_especialidade not in especialidades_usuario:
+                        # Adicionar especialidade ao usuário
+                        session.execute(insert(user_especialidades).values(
+                            codigo_sgc=codigo_sgc, codigo_especialidade=codigo_especialidade
+                        ))
+                    elif resposta == "Não" and codigo_especialidade in especialidades_usuario:
+                        # Remover especialidade do usuário
+                        session.execute(delete(user_especialidades).where(
+                            (user_especialidades.c.codigo_sgc == codigo_sgc) &
+                            (user_especialidades.c.codigo_especialidade == codigo_especialidade)
+                        ))
+
+                session.commit()  # ✅ Confirma todas as alterações no banco
+                st.success("✅ Especialidades atualizadas com sucesso!")
+                st.rerun()
+
+            except Exception as e:
+                session.rollback()  # ❌ Reverte mudanças em caso de erro
+                st.error(f"❌ Erro ao atualizar especialidades: {e}")

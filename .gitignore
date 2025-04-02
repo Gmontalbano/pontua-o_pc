@@ -1,4 +1,10 @@
 ./bkp
-./old
-
-temp.py
+./bkp/
+./.idea
+./.idea/
+./.venv
+./.venv/
+./.devcontainer
+.devcontainer
+Dockerfile
+*.env
