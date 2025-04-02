@@ -291,6 +291,7 @@ def gerenciar_usuarios():
 
     membros = tables.get("membros")
     usuarios = tables.get("usuarios")
+    permissao = tables.get("permissao")
 
     if membros is None or usuarios is None:
         st.error("❌ As tabelas 'membros' ou 'usuarios' não foram encontradas.")
@@ -320,6 +321,11 @@ def gerenciar_usuarios():
 
     col1, col2 = st.columns(2)
 
+    permissoes_disponiveis = ["Reuniões", "Membros", "Chamada",
+                              "Visualizar chamada", "Pontuação", "Usuário do sistema",
+                              "Especialidades", "Classes", "Tesouraria", "Patrimonio",
+                              "Materiais", "Atas e Atos", "Documentos", "Relatorios", "Novo"]
+
     if usuario_existente:
         st.warning("⚠️ Este membro já tem um usuário cadastrado. Você pode editar ou excluir abaixo.")
 
@@ -327,19 +333,47 @@ def gerenciar_usuarios():
 
         login = st.text_input("Login", login_atual)
         senha = st.text_input("Senha (Deixe em branco para manter a atual)", type="password")
-        permissao = st.selectbox("Permissão", ["equipe", "associado", "conselho", "admin"],
-                                 index=["equipe", "associado", "conselho", "admin"].index(permissao_atual))
+
+        with Session(engine) as session:
+            # Buscar permissões atuais do usuário
+            user_permissoes = session.execute(
+                select(permissao.c.permissao).where(permissao.c.codigo_sgc == codigo_sgc)
+            ).scalars().all()
+
+        st.subheader("Gerenciar Permissões")
+
+        selecionadas = st.multiselect("Permissões", permissoes_disponiveis, default=user_permissoes)
 
         if col1.button("💾 Salvar Alterações", key=f"salvar_alt_usuario_{usuario_id}"):
             with Session(engine) as session:
-                stmt = update(usuarios).where(usuarios.c.id == usuario_id).values(
-                    login=login, permissao=permissao
-                )
-                session.execute(stmt)
+
+                if login:
+                    session.execute(update(usuarios).where(usuarios.c.id == usuario_id).values(login=login))
 
                 if senha:
                     senha_hash = make_hashes(senha)
                     session.execute(update(usuarios).where(usuarios.c.id == usuario_id).values(senha=senha_hash))
+
+                # 🚀 Identificar permissões para adicionar/remover
+                novas_permissoes = set(selecionadas)
+                permissoes_removidas = set(user_permissoes) - novas_permissoes
+                permissoes_a_adicionar = novas_permissoes - set(user_permissoes)
+
+                # 🚀 Remover apenas permissões desmarcadas
+                if permissoes_removidas:
+                    session.execute(
+                        delete(permissao).where(
+                            (permissao.c.codigo_sgc == codigo_sgc) &
+                            (permissao.c.permissao.in_(permissoes_removidas))
+                        )
+                    )
+
+                # 🚀 Adicionar apenas permissões novas
+                if permissoes_a_adicionar:
+                    session.execute(
+                        insert(permissao),
+                        [{"codigo_sgc": codigo_sgc, "permissao": p} for p in permissoes_a_adicionar]
+                    )
 
                 session.commit()
                 st.success(f"✅ Usuário atualizado com sucesso!")
@@ -356,22 +390,32 @@ def gerenciar_usuarios():
         st.subheader("✅ Cadastrar Novo Usuário")
         login = st.text_input("Login")
         senha = st.text_input("Senha", type="password")
-        permissao = st.selectbox("Permissão", ["equipe", "associado", "conselho"])
+        permissao_selecionadas = st.multiselect("Permissões", permissoes_disponiveis)
 
         if st.button("Cadastrar Usuário", key="cadastrar_usuario"):
             if codigo_sgc and login and senha:
                 try:
                     senha_hash = make_hashes(senha)
                     with Session(engine) as session:
+                        # Inserir o usuário na tabela principal
                         session.execute(insert(usuarios).values(
-                            codigo_sgc=codigo_sgc, login=login, senha=senha_hash, permissao=permissao
+                            codigo_sgc=codigo_sgc, login=login, senha=senha_hash
                         ))
+
+                        # Inserir as permissões selecionadas na tabela `permissoes`
+                        session.execute(
+                            insert(permissao),
+                            [{"codigo_sgc": codigo_sgc, "permissao": p} for p in permissao_selecionadas]
+                        )
+
                         session.commit()
+
                     st.success(f"✅ Usuário cadastrado com sucesso para o membro {membro_selecionado}!")
                     st.rerun()
 
-                except IntegrityError:
+                except IntegrityError as e:
                     st.error("❌ Este login já está cadastrado. Escolha outro.")
+                    st.error(e)
 
                 except Exception as e:
                     st.error(f"❌ Erro inesperado: {str(e)}")

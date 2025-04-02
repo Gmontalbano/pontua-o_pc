@@ -21,8 +21,12 @@ from pgs.ata import atas_e_atos
 from pgs.documentos import docs
 from pgs.extracao import aba_extracao
 
+from pgs.db import engine, tables
+from sqlalchemy.orm import Session
+from sqlalchemy.sql import select
+
 # Configuração da página
-st.set_page_config(layout="wide", page_title="Pioneiros da Colina", page_icon='imgs/pc_logo.jpg',)
+st.set_page_config(layout="wide", page_title="Pioneiros da Colina", page_icon='imgs/pc_logo.jpg', )
 
 # **Definição do tempo limite para logout automático**
 TIMEOUT_LOGOUT = 30  # Tempo em segundos
@@ -40,7 +44,7 @@ def main():
     if "sgc" not in st.session_state:
         st.session_state.sgc = 0
     if "last_activity" not in st.session_state:
-        st.session_state.last_activity = time.time()      # Define o tempo inicial
+        st.session_state.last_activity = time.time()  # Define o tempo inicial
 
     # **Atualiza a última atividade sempre que há uma interação**
     if st.session_state.get("loggin", False):
@@ -89,31 +93,35 @@ def main():
 
         if usuario:
             nome = usuario["nome"]
-            permissao = usuario["permissao"]
+            permissao_u = usuario["permissao"]
             sgc = usuario["codigo_sgc"]
+            membros = tables.get("membros")
+            permissao = tables.get("permissao")
 
-            st.success(f"Bem-vindo, {nome}! Permissão: {permissao} {sgc}")
             st.session_state.username = nome
             st.session_state.sgc = sgc
             st.session_state.loggin = True
 
+            with Session(engine) as session:
+                # Buscar permissões atuais do usuário no banco de dados
+                user_permissoes = session.execute(
+                    select(permissao.c.permissao).where(permissao.c.codigo_sgc == st.session_state.sgc)
+                ).scalars().all()
 
-            # **Definição das permissões de acesso**
-            type_permission = {
-                'admin': ["Reuniões", "Membros", "Chamada",
-                          "Visualizar chamada", "Pontuação", "Usuário do sistema",
-                          "Especialidades", "Classes", "Tesouraria", "Patrimonio",
-                          "Materiais", "Atas e Atos", "Documentos", "Relatorios", "Novo"],
-                'especialidade': ["Reuniões", "Membros", "Chamada", "Visualizar chamada",
-                                  "Pontuação", "Usuário do sistema", "Especialidades",
-                                  "Classes", "Tesouraria", "Patrimonio", "Materiais",
-                                  "Atas e Atos", "Documentos", "Relatorios"],
-                'associado': ["Reuniões", "Membros", "Chamada",
-                              "Pontuação", "Usuário do sistema"],
-                'equipe': ["Chamada", "Pontuação"],
-                'conselho': ["Pontuação", "Especialidades", "Classes"]
-            }
-            menu = type_permission.get(permissao, [])
+                cargo_usuario = session.execute(
+                    select(membros.c.cargo).where(membros.c.codigo_sgc == st.session_state.sgc)
+                ).scalar()
+
+            st.success(f"Bem-vindo, {nome}! {cargo_usuario} {sgc}")
+
+            permissoes_disponiveis = ["Reuniões", "Membros", "Chamada",
+                                      "Visualizar chamada", "Pontuação", "Usuário do sistema",
+                                      "Especialidades", "Classes", "Tesouraria", "Patrimonio",
+                                      "Materiais", "Atas e Atos", "Documentos", "Relatorios", "Novo"]
+
+            user_permissoes_ordenadas = sorted(user_permissoes, key=lambda x: permissoes_disponiveis.index(x))
+
+            menu = list(user_permissoes_ordenadas)
 
             # **Exibe as abas disponíveis conforme permissão do usuário**
             tabs = st.tabs(menu)
@@ -138,14 +146,14 @@ def main():
                     elif menu[i] == "Usuário do sistema":
                         gerenciar_usuarios()
                     elif menu[i] == "Especialidades":
-                        if permissao in ['conselho', 'associado', 'admin']:
+                        if cargo_usuario in ['Conselheiro', 'Diretor Associado', 'Selecione um cargo']:
                             mostrar_especialidades_usuario(st.session_state.sgc)
-                            if permissao in ['associado', 'admin']:
+                            if cargo_usuario in ['Secretário', 'Selecione um cargo']:
                                 gerenciar_especialidades_usuario()
                     elif menu[i] == "Classes":
-                        if permissao in ['conselho', 'associado', 'admin']:
+                        if cargo_usuario in ['Conselheiro', 'Diretor Associado', 'Selecione um cargo']:
                             mostrar_classes_usuario(st.session_state.sgc)
-                            if permissao in ['associado', 'admin']:
+                            if cargo_usuario in ['Secretário', 'Selecione um cargo']:
                                 gerenciar_classes_usuario()
                     elif menu[i] == "Tesouraria":
                         with st.expander("Novo"):
@@ -156,18 +164,20 @@ def main():
                                 criar_mensalidades()
 
                         with st.expander("Inscrição"):
-                                inscrever_no_evento()
-                                remover_inscricao()
+                            inscrever_no_evento()
+                            remover_inscricao()
 
                         with st.expander("Editar"):
-                            aba2 = st.selectbox("Escolha uma opção:", ['Evento', 'Mensalidade'], key="Tesouraria_editar")
+                            aba2 = st.selectbox("Escolha uma opção:", ['Evento', 'Mensalidade'],
+                                                key="Tesouraria_editar")
                             if aba2 == 'Evento':
                                 editar_evento()
                             elif aba2 == 'Mensalidade':
                                 editar_mensalidade()
 
                         with st.expander("Pagamentos"):
-                            aba4 = st.selectbox("Escolha uma opção:", ['Evento', 'Mensalidade', 'Débitos'], key="Tesouraria_pagamentos")
+                            aba4 = st.selectbox("Escolha uma opção:", ['Evento', 'Mensalidade', 'Débitos'],
+                                                key="Tesouraria_pagamentos")
                             if aba4 == 'Evento':
                                 editar_status_inscricao()
                             elif aba4 == 'Mensalidade':
@@ -176,7 +186,8 @@ def main():
                                 visualizar_debitos()
 
                         with st.expander("Caixa"):
-                            aba5 = st.selectbox("Escolha uma opção:", ['Relatório', 'Gerenciar', 'Fechamento'], key="Tesouraria_Caixa")
+                            aba5 = st.selectbox("Escolha uma opção:", ['Relatório', 'Gerenciar', 'Fechamento'],
+                                                key="Tesouraria_Caixa")
                             if aba5 == 'Relatório':
                                 visualizar_relatorios()
                             elif aba5 == 'Gerenciar':
